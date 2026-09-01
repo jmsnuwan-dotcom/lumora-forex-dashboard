@@ -463,9 +463,18 @@ function renderDecision() {
   const sessionOpen = openSessions.length > 0;
 
   /*
-     SAFETY RULE:
-     Never create a trading decision when live market
-     data is unavailable.
+     =========================================================
+     LUMORA SAFE DECISION ENGINE
+
+     STATES:
+       good    = GOOD TRADE
+       bad     = AVOID TRADE
+       warn    = CONDITIONAL
+       neutral = DATA UNAVAILABLE
+
+     IMPORTANT:
+     Never classify missing/invalid live data as a trade state.
+     =========================================================
   */
 
   let state = "neutral";
@@ -473,10 +482,11 @@ function renderDecision() {
   let reason =
     "Live market intelligence data is not connected.";
 
-  /* =======================================================
+  /*
      DATA UNAVAILABLE
-     ======================================================= */
-
+     ---------------------------------------------------------
+     This has absolute priority.
+  */
   if (!marketData.available) {
 
     state = "neutral";
@@ -484,7 +494,7 @@ function renderDecision() {
     decision = "DATA UNAVAILABLE";
 
     reason =
-      "Connect the live market and economic-calendar data before making a trading decision.";
+      "Live market intelligence data is unavailable. No trading decision is generated.";
 
   } else {
 
@@ -492,18 +502,24 @@ function renderDecision() {
       Boolean(marketData.newsRisk);
 
     const score =
-      Number(marketData.score);
+      toNumberOrNull(marketData.score);
 
     const entryQuality =
       String(
         marketData.entryQuality || ""
       ).trim().toUpperCase();
 
-    /* =====================================================
-       🔴 AVOID TRADE
-       Highest priority
-       ===================================================== */
+    /*
+       A valid market-data response must contain enough
+       information to evaluate the decision.
+    */
+    const validScore =
+      Number.isFinite(score);
 
+    /*
+       RED — AVOID TRADE
+       Highest priority.
+    */
     if (highImpact) {
 
       state = "bad";
@@ -515,30 +531,37 @@ function renderDecision() {
 
     }
 
-    /* =====================================================
-       🟢 GOOD TO TRADE
-       ===================================================== */
+    /*
+       GREEN — GOOD TRADE
 
+       Only when:
+       - a major session is open
+       - score is valid
+       - score >= 75
+       - entry quality is not POOR
+    */
     else if (
       sessionOpen &&
-      Number.isFinite(score) &&
+      validScore &&
       score >= 75 &&
       entryQuality !== "POOR"
     ) {
 
       state = "good";
 
-      decision = "GOOD TO TRADE";
+      decision = "GOOD TRADE";
 
       reason =
         "Market conditions meet the current dashboard criteria.";
 
     }
 
-    /* =====================================================
-       🟡 CONDITIONAL
-       ===================================================== */
+    /*
+       YELLOW — CONDITIONAL
 
+       Data exists, but the full GOOD TRADE criteria
+       are not satisfied.
+    */
     else {
 
       state = "warn";
@@ -546,21 +569,41 @@ function renderDecision() {
       decision = "CONDITIONAL";
 
       reason =
-        "Conditions are not fully aligned. Wait for stronger confirmation.";
+        "Market data is available, but conditions are not fully aligned. Wait for stronger confirmation.";
     }
   }
 
-  /* =======================================================
-     APPLY BODY STATE
-     ======================================================= */
+  /*
+     =========================================================
+     APPLY STATE — ROBUSTLY
+     =========================================================
 
-  document.body.className =
-    `state-${state}`;
+     Remove every previous state first. This prevents a stale
+     yellow/green/red class from remaining after data changes.
+  */
+  const stateClasses = [
+    "state-neutral",
+    "state-good",
+    "state-bad",
+    "state-warn"
+  ];
 
-  /* =======================================================
+  document.body.classList.remove(...stateClasses);
+
+  if (document.documentElement) {
+    document.documentElement.classList.remove(...stateClasses);
+    document.documentElement.classList.add(`state-${state}`);
+  }
+
+  document.body.classList.add(`state-${state}`);
+
+  document.body.dataset.lumoraState = state;
+
+  /*
+     =========================================================
      MARKET STATUS
-     ======================================================= */
-
+     =========================================================
+  */
   setText(
     "marketStatus",
     decision
@@ -571,10 +614,11 @@ function renderDecision() {
     reason
   );
 
-  /* =======================================================
+  /*
+     =========================================================
      DECISION BADGE
-     ======================================================= */
-
+     =========================================================
+  */
   const decisionElement =
     $("decision");
 
@@ -587,10 +631,11 @@ function renderDecision() {
       `decision ${state}`;
   }
 
-  /* =======================================================
+  /*
+     =========================================================
      DECISION DETAILS
-     ======================================================= */
-
+     =========================================================
+  */
   setText(
     "dSession",
     sessionOpen
@@ -614,7 +659,7 @@ function renderDecision() {
 
   setText(
     "dRegime",
-    marketData.score !== null
+    Number.isFinite(toNumberOrNull(marketData.score))
       ? `${marketData.score}/100`
       : "—"
   );
@@ -630,6 +675,7 @@ function renderDecision() {
     reason
   );
 }
+
 /* =========================================================
    API DATA SUPPORT
    =========================================================
@@ -674,7 +720,27 @@ function applyDashboardData(data) {
         ? data.events
         : [];
 
-  marketData.available = true;
+  const hasMarketObject =
+    market &&
+    typeof market === "object" &&
+    Object.keys(market).length > 0;
+
+  const hasUsableMarketValue =
+    hasMarketObject &&
+    (
+      market.score !== undefined ||
+      market.regime_score !== undefined ||
+      market.overall_score !== undefined ||
+      market.trend !== undefined ||
+      market.adx !== undefined ||
+      market.atr !== undefined ||
+      market.volatility !== undefined ||
+      market.ema !== undefined ||
+      market.ema_structure !== undefined ||
+      market.entry_quality !== undefined
+    );
+
+  marketData.available = Boolean(hasUsableMarketValue);
 
   marketData.symbol =
     market.symbol ||
@@ -809,6 +875,27 @@ async function loadDashboardData(endpoint) {
       error
     );
 
+    /*
+       API failure = unavailable.
+       Clear the previous live state so the dashboard cannot
+       continue showing an old GOOD/AVOID/CONDITIONAL state.
+    */
+    marketData.available = false;
+    marketData.score = null;
+    marketData.name = null;
+    marketData.text = null;
+    marketData.trend = null;
+    marketData.adx = null;
+    marketData.atr = null;
+    marketData.volatility = null;
+    marketData.ema = null;
+    marketData.newsRisk = false;
+    marketData.entryQuality = null;
+
+    renderNews([]);
+    renderMarketData();
+    renderDecision();
+
     return false;
   }
 }
@@ -916,6 +1003,26 @@ function setupServiceWorker() {
    ========================================================= */
 
 function initDashboard() {
+
+  /*
+     Initial safe state.
+     Always start neutral until real data is received.
+  */
+  document.body.classList.remove(
+    "state-good",
+    "state-bad",
+    "state-warn"
+  );
+  document.body.classList.add("state-neutral");
+
+  if (document.documentElement) {
+    document.documentElement.classList.remove(
+      "state-good",
+      "state-bad",
+      "state-warn"
+    );
+    document.documentElement.classList.add("state-neutral");
+  }
 
   /*
      Initial safe state

@@ -1,4 +1,4 @@
-const CACHE = "lumora-forex-v4";
+const CACHE = "lumora-forex-v5";
 const ASSETS = ["/","/index.html","/style.css","/app.js","/manifest.webmanifest","/icons/icon-192.png","/icons/icon-512.png"];
 
 self.addEventListener("install", event => {

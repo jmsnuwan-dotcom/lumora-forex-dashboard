@@ -666,6 +666,7 @@ function applyDashboardData(data) {
   renderNews(news);
   renderMarketData();
   renderDecision();
+  checkGoodToTradeNotification(market.condition, market.reason);
 }
 
 /* =========================================================
@@ -841,70 +842,147 @@ function setupAlertButton() {
 }
 
 /* =========================================================
-   PWA INSTALL BUTTON
+   PWA INSTALL + NOTIFICATIONS
    ========================================================= */
 
+let deferredInstallPrompt = null;
+let lumoraRegistration = null;
+let lastCondition = null;
+
+function setButtonText(id, text, enabled = true) {
+  const button = $(id);
+  if (!button) return;
+  button.textContent = text;
+  button.disabled = !enabled;
+}
+
 function setupInstallButton() {
+  const button = $("installBtn");
+  if (!button) return;
 
-  const installButton =
-    $("installBtn");
+  // Always show the button. Some browsers do not fire
+  // beforeinstallprompt, especially iOS/Safari.
+  button.hidden = false;
 
-  if (!installButton) {
+  window.addEventListener("beforeinstallprompt", event => {
+    event.preventDefault();
+    deferredInstallPrompt = event;
+    button.hidden = false;
+    setButtonText("installBtn", "INSTALL APP");
+  });
+
+  button.addEventListener("click", async () => {
+    if (deferredInstallPrompt) {
+      deferredInstallPrompt.prompt();
+      try {
+        const choice = await deferredInstallPrompt.userChoice;
+        if (choice && choice.outcome === "accepted") {
+          setButtonText("installBtn", "INSTALLED");
+        }
+      } catch (error) {
+        console.log("Install prompt error:", error);
+      }
+      deferredInstallPrompt = null;
+      return;
+    }
+
+    // Fallback instructions when the browser has no install prompt.
+    const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    if (isIOS) {
+      alert("To install Lumora on iPhone/iPad:\n\n1. Tap Share in Safari.\n2. Choose 'Add to Home Screen'.\n3. Tap Add.");
+    } else {
+      alert("If the browser does not show the install popup:\n\nOpen the browser menu (⋮) and choose 'Install app' or 'Add to Home screen'.\n\nMake sure you are using the HTTPS Vercel/GitHub deployed site.");
+    }
+  });
+
+  window.addEventListener("appinstalled", () => {
+    setButtonText("installBtn", "INSTALLED");
+  });
+}
+
+async function setupAlerts() {
+  const button = $("enableAlertsBtn");
+  if (!button) return;
+
+  if (!("Notification" in window)) {
+    setButtonText("enableAlertsBtn", "ALERTS UNSUPPORTED", false);
     return;
   }
 
-  let deferredPrompt = null;
+  if (Notification.permission === "granted") {
+    button.classList.add("enabled");
+    button.textContent = "ALERTS ENABLED";
+    return;
+  }
 
-  window.addEventListener(
-    "beforeinstallprompt",
-    event => {
+  button.addEventListener("click", async () => {
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission === "granted") {
+        button.classList.add("enabled");
+        button.textContent = "ALERTS ENABLED";
 
-      event.preventDefault();
-
-      deferredPrompt =
-        event;
-
-      installButton.hidden =
-        false;
-    }
-  );
-
-  installButton.addEventListener(
-    "click",
-    async () => {
-
-      if (!deferredPrompt) {
-        return;
-      }
-
-      deferredPrompt.prompt();
-
-      try {
-
-        await deferredPrompt.userChoice;
-
-      } catch (error) {
-
-        console.log(
-          "PWA install prompt closed.",
-          error
+        // Give the user an immediate test notification so we know
+        // the permission + service worker path works.
+        await sendLumoraNotification(
+          "Lumora alerts are ON.",
+          "You will be notified when market conditions become GOOD TO TRADE."
         );
+      } else {
+        button.textContent = "ALLOW ALERTS";
       }
-
-      deferredPrompt = null;
-
-      installButton.hidden =
-        true;
+    } catch (error) {
+      console.error("Notification permission error:", error);
     }
-  );
+  });
+}
 
-  window.addEventListener(
-    "appinstalled",
-    () => {
+async function sendLumoraNotification(title, body) {
+  try {
+    const registration =
+      lumoraRegistration ||
+      ("serviceWorker" in navigator
+        ? await navigator.serviceWorker.ready
+        : null);
 
-      installButton.hidden =
-        true;
+    if (registration && registration.showNotification) {
+      await registration.showNotification(title, {
+        body,
+        icon: "/icons/icon-192.png",
+        badge: "/icons/icon-192.png",
+        tag: "lumora-market-alert",
+        renotify: true,
+        vibrate: [200, 100, 200]
+      });
+      return true;
     }
+
+    if (Notification.permission === "granted") {
+      new Notification(title, { body });
+      return true;
+    }
+  } catch (error) {
+    console.error("Lumora notification error:", error);
+  }
+  return false;
+}
+
+async function checkGoodToTradeNotification(condition, reason) {
+  const current = String(condition || "").trim().toUpperCase();
+  if (!current) return;
+
+  const previous = lastCondition;
+  lastCondition = current;
+
+  if (current !== "GOOD TO TRADE") return;
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+
+  // Notify on the first GOOD state and whenever the market returns to GOOD.
+  if (previous === "GOOD TO TRADE") return;
+
+  await sendLumoraNotification(
+    "Lumora — GOOD TO TRADE",
+    reason || "Market conditions meet the current dashboard criteria."
   );
 }
 
@@ -925,7 +1003,11 @@ function setupServiceWorker() {
     () => {
 
       navigator.serviceWorker
-        .register("./sw.js")
+        .register("./sw.js?v=5")
+        .then(registration => {
+          lumoraRegistration = registration;
+          console.log("Lumora service worker ready.");
+        })
         .catch(error => {
 
           console.error(

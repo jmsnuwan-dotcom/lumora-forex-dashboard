@@ -1127,3 +1127,52 @@ body.state-warn {
   position: relative;
   z-index: 1;
 }
+
+
+/* =========================================================
+   FINAL INSTALL / ALERT BUTTON VISIBILITY FIX
+   ========================================================= */
+.top-buttons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.install-btn,
+.alert-btn {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 9px;
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .04em;
+  white-space: nowrap;
+}
+.install-btn {
+  border: 1px solid rgba(110,190,255,.38);
+  background: rgba(20,65,95,.35);
+  color: #9bdcff;
+}
+.install-btn:hover,
+.alert-btn:hover {
+  filter: brightness(1.15);
+}
+@media (max-width: 600px) {
+  .topbar {
+    align-items: flex-start;
+  }
+  .top-buttons {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 5px;
+  }
+  .install-btn,
+  .alert-btn {
+    min-height: 32px;
+    padding: 0 8px;
+    font-size: 8px;
+  }
+}

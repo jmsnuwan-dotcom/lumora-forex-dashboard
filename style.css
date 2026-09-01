@@ -959,3 +959,63 @@ article,
 div {
   box-sizing: border-box;
 }
+
+/* =========================================================
+   LUMORA MARKET STATE GLOW
+   ========================================================= */
+
+/* Neutral / DATA UNAVAILABLE */
+body:not(.state-good):not(.state-bad):not(.state-warn) {
+  background:
+    radial-gradient(
+      circle at 50% 0%,
+      rgba(30, 55, 65, 0.10),
+      transparent 45%
+    ),
+    #05090d !important;
+}
+
+/* 🟢 GOOD TRADE */
+body.state-good {
+  background:
+    radial-gradient(
+      circle at 50% 0%,
+      rgba(20, 150, 95, 0.14),
+      transparent 45%
+    ),
+    #05090d !important;
+}
+
+/* 🔴 AVOID TRADE */
+body.state-bad {
+  background:
+    radial-gradient(
+      circle at 50% 0%,
+      rgba(190, 35, 50, 0.14),
+      transparent 45%
+    ),
+    #05090d !important;
+}
+
+/* 🟡 WARNING / CONDITIONAL */
+body.state-warn {
+  background:
+    radial-gradient(
+      circle at 50% 0%,
+      rgba(190, 145, 30, 0.12),
+      transparent 45%
+    ),
+    #05090d !important;
+}
+
+/* Keep glass cards above the ambient glow */
+.card,
+.panel,
+.session-container,
+.news-card,
+.regime-card,
+.trade-filter,
+.sessions {
+  position: relative;
+  z-index: 1;
+}

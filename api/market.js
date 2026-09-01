@@ -6,6 +6,35 @@
 const DEFAULT_SYMBOL = "XAU/USD";
 const DEFAULT_INTERVAL = "1min";
 
+// ------------------------------------------------------------
+// ECONOMIC CALENDAR
+// ------------------------------------------------------------
+// Twelve Data is used for market prices/technicals. For macro
+// releases (CPI, PMI, NFP, ISM, etc.) Lumora uses an optional
+// Finnhub calendar and falls back to the public ForexFactory
+// weekly feed. No fake events are generated.
+const FINNHUB_CALENDAR_URL =
+  "https://finnhub.io/api/v1/calendar/economic";
+
+const CALENDAR_URLS = [
+  "https://nfs.faireconomy.media/ff_calendar_thisweek.json",
+  "https://cdn-nfs.faireconomy.media/ff_calendar_thisweek.json"
+];
+
+const CALENDAR_CACHE_MS = 15 * 60 * 1000;
+const NEWS_LOOKAHEAD_MINUTES = 60;
+const NEWS_RECENT_MINUTES = 30;
+const MAJOR_CURRENCIES = new Set([
+  "USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "NZD", "CNY"
+]);
+
+let calendarCache = {
+  fetchedAt: 0,
+  events: null,
+  source: null,
+  error: null
+};
+
 export default async function handler(req, res) {
   try {
     const apiKey = process.env.TWELVE_DATA_API_KEY;
@@ -308,20 +337,59 @@ export default async function handler(req, res) {
       session.length > 0;
 
     // --------------------------------------------------------
-    // NEWS
+    // LIVE ECONOMIC CALENDAR
     // --------------------------------------------------------
-    //
-    // IMPORTANT:
-    // Economic calendar is NOT connected yet.
-    //
-    // Therefore Lumora will NOT claim
-    // GOOD TO TRADE until news data is verified.
-    //
 
-    const newsAvailable = false;
+    const calendar =
+      await getEconomicCalendar();
+
+    const now = new Date();
+
+    const relevantNews = calendar.events
+      .filter(event =>
+        MAJOR_CURRENCIES.has(event.currency)
+      )
+      .map(event => ({
+        ...event,
+        minutesFromNow: Math.round(
+          (event.timestamp - now.getTime()) / 60000
+        )
+      }))
+      .filter(event =>
+        event.minutesFromNow >= -NEWS_RECENT_MINUTES
+      )
+      .filter(event =>
+        event.minutesFromNow <= 24 * 60
+      )
+      .sort((a, b) =>
+        a.timestamp - b.timestamp
+      );
+
+    const highRiskEvent =
+      relevantNews.find(event =>
+        event.impact === "HIGH" &&
+        event.minutesFromNow >= -NEWS_RECENT_MINUTES &&
+        event.minutesFromNow <= NEWS_LOOKAHEAD_MINUTES
+      );
+
+    const mediumRiskEvent =
+      relevantNews.find(event =>
+        event.impact === "MEDIUM" &&
+        event.minutesFromNow >= 0 &&
+        event.minutesFromNow <= 30
+      );
+
+    const newsAvailable =
+      calendar.available === true;
 
     const newsRisk =
-      "UNKNOWN";
+      !newsAvailable
+        ? "UNKNOWN"
+        : highRiskEvent
+          ? "HIGH"
+          : mediumRiskEvent
+            ? "MEDIUM"
+            : "LOW";
 
     // --------------------------------------------------------
     // FINAL CONDITION
@@ -366,6 +434,16 @@ export default async function handler(req, res) {
         "Volatility is high while market structure is not strong enough.";
     }
 
+    // High-impact event
+    else if (newsRisk === "HIGH") {
+
+      condition =
+        "AVOID TRADE";
+
+      reason =
+        `High-impact economic event near market time: ${highRiskEvent.title}.`;
+    }
+
     // News not verified
     else if (!newsAvailable) {
 
@@ -376,6 +454,16 @@ export default async function handler(req, res) {
         "Technical conditions are available, but live economic-calendar risk is not verified.";
     }
 
+    // Medium-impact event nearby
+    else if (newsRisk === "MEDIUM") {
+
+      condition =
+        "CONDITIONAL";
+
+      reason =
+        `Medium-impact economic event is within 30 minutes: ${mediumRiskEvent.title}.`;
+    }
+
     // Strong technical condition
     else if (score >= 75) {
 
@@ -383,7 +471,7 @@ export default async function handler(req, res) {
         "GOOD TO TRADE";
 
       reason =
-        "Trend, momentum, volatility, session and news conditions are aligned.";
+        "Trend, momentum, volatility, session and verified news conditions are aligned.";
     }
 
     // --------------------------------------------------------
@@ -455,7 +543,17 @@ export default async function handler(req, res) {
 
       newsRisk,
 
-      news: [],
+      news: relevantNews
+        .slice(0, 12)
+        .map(formatNewsForClient),
+
+      nextNews:
+        relevantNews.length > 0
+          ? formatNewsForClient(relevantNews[0])
+          : null,
+
+      newsSource:
+        calendar.source,
 
       session,
 
@@ -895,6 +993,398 @@ function wilder(
   }
 
   return output;
+}
+
+
+// ============================================================
+// ECONOMIC CALENDAR FETCH
+// ============================================================
+
+async function getEconomicCalendar() {
+
+  const now = Date.now();
+
+  if (
+    calendarCache.events &&
+    now - calendarCache.fetchedAt < CALENDAR_CACHE_MS
+  ) {
+    return {
+      available: true,
+      events: calendarCache.events,
+      source: calendarCache.source,
+      error: null
+    };
+  }
+
+  const finnhubKey =
+    process.env.FINNHUB_API_KEY;
+
+  // Primary provider: Finnhub, when configured.
+  if (finnhubKey) {
+    try {
+      const from = new Date(
+        now - 24 * 60 * 60 * 1000
+      )
+        .toISOString()
+        .slice(0, 10);
+
+      const to = new Date(
+        now + 7 * 24 * 60 * 60 * 1000
+      )
+        .toISOString()
+        .slice(0, 10);
+
+      const url =
+        `${FINNHUB_CALENDAR_URL}?from=${from}&to=${to}&token=${encodeURIComponent(finnhubKey)}`;
+
+      const response =
+        await fetch(url, {
+          headers: {
+            Accept: "application/json",
+            "User-Agent": "Lumora-Market-Dashboard/1.0"
+          },
+          cache: "no-store"
+        });
+
+      if (!response.ok) {
+        throw new Error(
+          `Finnhub calendar HTTP ${response.status}`
+        );
+      }
+
+      const json =
+        await response.json();
+
+      const rawEvents =
+        Array.isArray(json.economicCalendar)
+          ? json.economicCalendar
+          : Array.isArray(json.data)
+            ? json.data
+            : [];
+
+      const events =
+        rawEvents
+          .map(normalizeFinnhubEvent)
+          .filter(Boolean)
+          .sort(
+            (a, b) =>
+              a.timestamp - b.timestamp
+          );
+
+      if (!events.length) {
+        throw new Error(
+          "Finnhub calendar returned no valid events"
+        );
+      }
+
+      calendarCache = {
+        fetchedAt: now,
+        events,
+        source: "Finnhub economic calendar",
+        error: null
+      };
+
+      return {
+        available: true,
+        events,
+        source: calendarCache.source,
+        error: null
+      };
+
+    } catch (error) {
+      console.error(
+        "Finnhub calendar failed:",
+        error
+      );
+    }
+  }
+
+  // Fallback provider: ForexFactory weekly JSON feed.
+  let lastError = null;
+
+  for (const url of CALENDAR_URLS) {
+    try {
+      const response =
+        await fetch(url, {
+          headers: {
+            Accept: "application/json",
+            "User-Agent":
+              "Mozilla/5.0 Lumora-Market-Dashboard/1.0"
+          },
+          cache: "no-store"
+        });
+
+      if (!response.ok) {
+        throw new Error(
+          `Calendar HTTP ${response.status}`
+        );
+      }
+
+      const json =
+        await response.json();
+
+      if (!Array.isArray(json)) {
+        throw new Error(
+          "Economic calendar returned an invalid format"
+        );
+      }
+
+      const events =
+        json
+          .map(normalizeCalendarEvent)
+          .filter(Boolean)
+          .sort(
+            (a, b) =>
+              a.timestamp - b.timestamp
+          );
+
+      if (!events.length) {
+        throw new Error(
+          "Economic calendar returned no valid events"
+        );
+      }
+
+      calendarCache = {
+        fetchedAt: now,
+        events,
+        source:
+          "ForexFactory weekly calendar feed",
+        error: null
+      };
+
+      return {
+        available: true,
+        events,
+        source: calendarCache.source,
+        error: null
+      };
+
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  calendarCache = {
+    fetchedAt: now,
+    events: null,
+    source: null,
+    error:
+      lastError instanceof Error
+        ? lastError.message
+        : "Calendar unavailable"
+  };
+
+  return {
+    available: false,
+    events: [],
+    source: null,
+    error: calendarCache.error
+  };
+}
+
+function normalizeFinnhubEvent(item) {
+
+  if (!item || typeof item !== "object") {
+    return null;
+  }
+
+  let timestamp = null;
+
+  if (Number.isFinite(Number(item.time))) {
+    const raw = Number(item.time);
+
+    timestamp =
+      raw > 100000000000
+        ? raw
+        : raw * 1000;
+  } else {
+    timestamp = new Date(
+      item.datetime ||
+      item.date ||
+      ""
+    ).getTime();
+  }
+
+  if (!Number.isFinite(timestamp)) {
+    return null;
+  }
+
+  const country = String(
+    item.country ||
+    item.currency ||
+    ""
+  )
+    .trim()
+    .toUpperCase();
+
+  const currencyMap = {
+    US: "USD",
+    GB: "GBP",
+    UK: "GBP",
+    EU: "EUR",
+    DE: "EUR",
+    FR: "EUR",
+    IT: "EUR",
+    ES: "EUR",
+    JP: "JPY",
+    CH: "CHF",
+    CA: "CAD",
+    AU: "AUD",
+    NZ: "NZD",
+    CN: "CNY"
+  };
+
+  const currency =
+    currencyMap[country] ||
+    (country.length === 3
+      ? country
+      : "");
+
+  const impactRaw = String(
+    item.impact ||
+    item.importance ||
+    "LOW"
+  )
+    .trim()
+    .toUpperCase();
+
+  const impact =
+    impactRaw.includes("HIGH") ||
+    impactRaw === "3"
+      ? "HIGH"
+      : impactRaw.includes("MEDIUM") ||
+        impactRaw === "2"
+        ? "MEDIUM"
+        : "LOW";
+
+  const title = String(
+    item.event ||
+    item.title ||
+    item.name ||
+    "Economic event"
+  ).trim();
+
+  return {
+    timestamp,
+    currency,
+    impact,
+    title,
+    forecast:
+      item.estimate ??
+      item.forecast ??
+      null,
+    previous:
+      item.prev ??
+      item.previous ??
+      null
+  };
+}
+
+function normalizeCalendarEvent(item) {
+
+  if (!item || typeof item !== "object") {
+    return null;
+  }
+
+  let timestamp = null;
+
+  const rawDate =
+    item.date ||
+    item.datetime ||
+    item.time ||
+    "";
+
+  if (Number.isFinite(Number(rawDate))) {
+    const raw = Number(rawDate);
+    timestamp =
+      raw > 100000000000
+        ? raw
+        : raw * 1000;
+  } else {
+    timestamp =
+      new Date(rawDate).getTime();
+  }
+
+  if (!Number.isFinite(timestamp)) {
+    return null;
+  }
+
+  const currency = String(
+    item.country ||
+    item.currency ||
+    ""
+  )
+    .trim()
+    .toUpperCase();
+
+  const impactRaw = String(
+    item.impact ||
+    "LOW"
+  )
+    .trim()
+    .toUpperCase();
+
+  const impact =
+    impactRaw === "HIGH"
+      ? "HIGH"
+      : impactRaw === "MEDIUM"
+        ? "MEDIUM"
+        : "LOW";
+
+  const title = String(
+    item.title ||
+    item.name ||
+    "Economic event"
+  ).trim();
+
+  return {
+    timestamp,
+    currency,
+    impact,
+    title,
+    forecast:
+      item.forecast ?? null,
+    previous:
+      item.previous ?? null
+  };
+}
+
+function formatNewsForClient(event) {
+
+  const date =
+    new Date(event.timestamp);
+
+  return {
+    time:
+      date.toLocaleTimeString(
+        "en-GB",
+        {
+          timeZone: "Asia/Colombo",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false
+        }
+      ),
+
+    date:
+      date.toLocaleDateString(
+        "en-GB",
+        {
+          timeZone: "Asia/Colombo",
+          day: "2-digit",
+          month: "short"
+        }
+      ),
+
+    impact: event.impact,
+    currency: event.currency,
+    title: event.title,
+    meta:
+      `${event.currency} • ${event.impact} impact`,
+    forecast: event.forecast,
+    previous: event.previous,
+    timestamp: event.timestamp
+  };
 }
 
 

@@ -1053,3 +1053,293 @@ if (
 
   initDashboard();
 }
+
+
+/* =========================================================
+   LUMORA PWA INSTALL POPUP
+   ========================================================= */
+
+let lumoraInstallPrompt = null;
+
+const LUMORA_INSTALL_KEY = "lumora_pwa_install_dismissed";
+const LUMORA_INSTALL_VERSION = "v1";
+
+function isStandaloneMode() {
+    return (
+        window.matchMedia("(display-mode: standalone)").matches ||
+        window.navigator.standalone === true
+    );
+}
+
+function isIOSDevice() {
+    return /iphone|ipad|ipod/i.test(navigator.userAgent);
+}
+
+function createLumoraInstallPopup() {
+    if (document.getElementById("lumora-install-popup")) return;
+    if (isStandaloneMode()) return;
+
+    const popup = document.createElement("div");
+    popup.id = "lumora-install-popup";
+
+    popup.innerHTML = `
+        <div class="lumora-install-card">
+
+            <button
+                class="lumora-install-close"
+                id="lumora-install-close"
+                aria-label="Close"
+                type="button"
+            >
+                ×
+            </button>
+
+            <div class="lumora-install-icon">
+                L
+            </div>
+
+            <div class="lumora-install-content">
+
+                <div class="lumora-install-title">
+                    Install Lumora
+                </div>
+
+                <div class="lumora-install-text">
+                    Install Lumora as an app for faster access.
+                </div>
+
+                <div
+                    id="lumora-ios-help"
+                    class="lumora-ios-help"
+                >
+                    On iPhone/iPad, tap
+                    <strong>Share</strong>
+                    and choose
+                    <strong>Add to Home Screen</strong>.
+                </div>
+
+                <div class="lumora-install-actions">
+
+                    <button
+                        id="lumora-install-button"
+                        class="lumora-install-button"
+                        type="button"
+                    >
+                        Install Now
+                    </button>
+
+                    <button
+                        id="lumora-install-later"
+                        class="lumora-install-later"
+                        type="button"
+                    >
+                        Later
+                    </button>
+
+                </div>
+
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(popup);
+
+    const installButton =
+        document.getElementById("lumora-install-button");
+
+    const laterButton =
+        document.getElementById("lumora-install-later");
+
+    const closeButton =
+        document.getElementById("lumora-install-close");
+
+    const iosHelp =
+        document.getElementById("lumora-ios-help");
+
+    /*
+     * iPhone / iPad
+     */
+    if (isIOSDevice()) {
+        iosHelp.style.display = "block";
+
+        installButton.textContent = "How to Install";
+
+        installButton.addEventListener("click", () => {
+            iosHelp.classList.add("lumora-ios-help-visible");
+        });
+
+    } else {
+        iosHelp.style.display = "none";
+
+        /*
+         * Android / Chrome / Edge / Desktop
+         */
+        installButton.addEventListener("click", async () => {
+
+            if (!lumoraInstallPrompt) {
+                showLumoraInstallHelp();
+                return;
+            }
+
+            lumoraInstallPrompt.prompt();
+
+            const result =
+                await lumoraInstallPrompt.userChoice;
+
+            if (result.outcome === "accepted") {
+                hideLumoraInstallPopup();
+            }
+
+            lumoraInstallPrompt = null;
+        });
+    }
+
+    laterButton.addEventListener(
+        "click",
+        hideLumoraInstallPopup
+    );
+
+    closeButton.addEventListener(
+        "click",
+        hideLumoraInstallPopup
+    );
+}
+
+
+/*
+ * Browser gives us the real PWA install prompt.
+ */
+window.addEventListener("beforeinstallprompt", (event) => {
+
+    event.preventDefault();
+
+    lumoraInstallPrompt = event;
+
+    setTimeout(() => {
+
+        if (!isStandaloneMode()) {
+            createLumoraInstallPopup();
+        }
+
+    }, 1200);
+});
+
+
+/*
+ * User successfully installed Lumora.
+ */
+window.addEventListener("appinstalled", () => {
+
+    lumoraInstallPrompt = null;
+
+    hideLumoraInstallPopup();
+
+    console.log("Lumora PWA installed successfully.");
+});
+
+
+function hideLumoraInstallPopup() {
+
+    const popup =
+        document.getElementById("lumora-install-popup");
+
+    if (popup) {
+        popup.classList.add("lumora-install-hidden");
+
+        setTimeout(() => {
+            popup.remove();
+        }, 300);
+    }
+
+    try {
+        localStorage.setItem(
+            LUMORA_INSTALL_KEY,
+            LUMORA_INSTALL_VERSION
+        );
+    } catch (error) {
+        console.warn(
+            "Lumora install preference could not be saved.",
+            error
+        );
+    }
+}
+
+
+/*
+ * If browser doesn't expose beforeinstallprompt,
+ * show a helpful message instead of doing nothing.
+ */
+function showLumoraInstallHelp() {
+
+    const iosHelp =
+        document.getElementById("lumora-ios-help");
+
+    if (!iosHelp) return;
+
+    iosHelp.style.display = "block";
+
+    iosHelp.innerHTML = `
+        <strong>Install Lumora:</strong><br><br>
+
+        <b>Android / Chrome:</b>
+        open the browser menu and choose
+        <b>Install app</b> or
+        <b>Add to Home screen</b>.
+
+        <br><br>
+
+        <b>PC / Chrome:</b>
+        use the install icon in the address bar
+        or Chrome menu → Install Lumora.
+
+        <br><br>
+
+        <b>iPhone / iPad:</b>
+        tap Share → Add to Home Screen.
+    `;
+
+    iosHelp.classList.add(
+        "lumora-ios-help-visible"
+    );
+}
+
+
+/*
+ * Automatically show popup if the browser
+ * already supports PWA installation.
+ */
+document.addEventListener("DOMContentLoaded", () => {
+
+    if (isStandaloneMode()) return;
+
+    /*
+     * Don't show the popup if the user already
+     * dismissed it in this browser.
+     */
+    try {
+
+        const dismissed =
+            localStorage.getItem(LUMORA_INSTALL_KEY);
+
+        if (dismissed === LUMORA_INSTALL_VERSION) {
+            return;
+        }
+
+    } catch (error) {
+        console.warn(
+            "Lumora localStorage unavailable.",
+            error
+        );
+    }
+
+    /*
+     * iOS does not fire beforeinstallprompt.
+     * Therefore show the popup directly.
+     */
+    if (isIOSDevice()) {
+
+        setTimeout(() => {
+            createLumoraInstallPopup();
+        }, 1200);
+    }
+});

@@ -1,20 +1,228 @@
+/* =========================================================
+   LUMORA FOREX MARKET INTELLIGENCE DASHBOARD
+   Glass UI
+   ========================================================= */
+
 * {
-    box-sizing: border-box;
+  box-sizing: border-box;
 }
 
 html {
-    margin: 0;
-    padding: 0;
-    background: #050a0f;
+  margin: 0;
+  padding: 0;
+  background: #05080d;
 }
 
 body {
-    margin: 0;
-    min-height: 100vh;
-    background: #050a0f;
-    color: #edf5f7;
-    font-family: Inter, Arial, sans-serif;
-    -webkit-font-smoothing: antialiased;
+  margin: 0;
+  min-height: 100vh;
+
+  background:
+    radial-gradient(
+      circle at 15% 35%,
+      rgba(20, 90, 70, 0.10),
+      transparent 32%
+    ),
+    radial-gradient(
+      circle at 85% 35%,
+      rgba(90, 25, 40, 0.10),
+      transparent 32%
+    ),
+    #05080d;
+
+  color: #edf5f8;
+
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* =========================================================
+   BODY STATE GLOWS
+   ========================================================= */
+
+body.state-good {
+  background:
+    radial-gradient(
+      circle at 50% 45%,
+      rgba(45, 210, 125, 0.08),
+      transparent 38%
+    ),
+    #05080d;
+}
+
+body.state-bad {
+  background:
+    radial-gradient(
+      circle at 50% 45%,
+      rgba(255, 70, 85, 0.08),
+      transparent 38%
+    ),
+    #05080d;
+}
+
+body.state-warn {
+  background:
+    radial-gradient(
+      circle at 50% 45%,
+      rgba(245, 185, 60, 0.06),
+      transparent 38%
+    ),
+    #05080d;
+}
+
+/* =========================================================
+   GLOBAL
+   ========================================================= */
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* =========================================================
+   MAIN CONTAINER
+   ========================================================= */
+
+.container,
+main,
+.dashboard,
+.page {
+  width: min(1240px, calc(100% - 40px));
+  margin: 0 auto;
+}
+
+/* =========================================================
+   HEADER
+   ========================================================= */
+
+header,
+.header,
+.topbar,
+.navbar {
+  position: relative;
+
+  width: 100%;
+
+  border-bottom: 1px solid rgba(130, 170, 185, 0.12);
+
+  background:
+    rgba(7, 13, 19, 0.72);
+
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+}
+
+header {
+  padding: 22px 0;
+}
+
+.header-inner,
+.header-content,
+.topbar-inner {
+  width: min(1240px, calc(100% - 40px));
+  margin: 0 auto;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* =========================================================
+   BRAND
+   ========================================================= */
+
+.logo,
+.brand,
+.brand-name {
+  color: #f5fafc;
+
+  font-size: 25px;
+  font-weight: 850;
+
+  letter-spacing: 0.16em;
+}
+
+.brand-subtitle,
+.subtitle {
+  margin-top: 3px;
+
+  color: #78909c;
+
+  font-size: 11px;
+  font-weight: 500;
+}
+
+/* =========================================================
+   LIVE MARKET
+   ========================================================= */
+
+.live-market,
+.live,
+.status-live {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  color: #72e7ad;
+
+  font-size: 12px;
+  font-weight: 800;
+
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.live-market::before,
+.live::before,
+.status-live::before {
+  content: "";
+
+  width: 7px;
+  height: 7px;
+
+  border-radius: 50%;
+
+  background: #52e49a;
+
+  box-shadow:
+    0 0 8px rgba(82, 228, 154, 0.9),
+    0 0 18px rgba(82, 228, 154, 0.35);
+}
+
+/* =========================================================
+   DASHBOARD GRID
+   ========================================================= */
+
+.dashboard-grid,
+.grid,
+.cards-grid {
+  display: grid;
+
+  grid-template-columns:
+    repeat(12, minmax(0, 1fr));
+
+  gap: 14px;
+
+  padding: 28px 0 50px;
 }
 
 /* =========================================================
@@ -29,317 +237,948 @@ body {
 .regime-card,
 .trade-filter,
 .section,
-.container,
-.box {
-    background: rgba(13, 25, 33, 0.72);
-    border: 1px solid rgba(110, 160, 175, 0.20);
-    border-radius: 18px;
-    box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.035),
-        0 12px 35px rgba(0, 0, 0, 0.22);
-    backdrop-filter: blur(18px);
-    -webkit-backdrop-filter: blur(18px);
+.box,
+.container-card {
+
+  position: relative;
+
+  overflow: hidden;
+
+  border: 1px solid
+    rgba(130, 180, 195, 0.18);
+
+  border-radius: 18px;
+
+  background:
+    linear-gradient(
+      135deg,
+      rgba(18, 31, 40, 0.72),
+      rgba(8, 17, 24, 0.62)
+    );
+
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.035),
+    0 12px 35px rgba(0,0,0,0.22);
+
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
 }
 
 /* =========================================================
-   GLASS HOVER
+   TOP KPI CARDS
    ========================================================= */
 
-.card:hover,
-.panel:hover,
-.metric-card:hover,
-.session-card:hover,
-.news-card:hover,
-.regime-card:hover,
-.trade-filter:hover,
-.section:hover,
-.box:hover {
-    border-color: rgba(130, 190, 205, 0.30);
+.top-cards,
+.summary-grid,
+.kpi-grid {
+  display: grid;
+
+  grid-template-columns:
+    repeat(3, minmax(0, 1fr));
+
+  gap: 14px;
+
+  margin: 28px 0 14px;
+}
+
+.top-cards > *,
+.summary-grid > *,
+.kpi-grid > * {
+  min-width: 0;
+}
+
+.top-card,
+.kpi-card,
+.summary-card {
+
+  min-height: 138px;
+
+  padding: 24px;
+
+  border: 1px solid
+    rgba(120, 165, 180, 0.18);
+
+  border-radius: 18px;
+
+  background:
+    linear-gradient(
+      145deg,
+      rgba(16, 29, 38, 0.82),
+      rgba(8, 17, 24, 0.66)
+    );
+
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.035),
+    0 15px 35px rgba(0,0,0,0.2);
+}
+
+.card-label,
+.kpi-label,
+.section-label {
+
+  margin-bottom: 12px;
+
+  color: #78a6ba;
+
+  font-size: 10px;
+  font-weight: 850;
+
+  letter-spacing: 0.18em;
+
+  text-transform: uppercase;
+}
+
+.clock-value,
+.kpi-value,
+.big-value {
+
+  color: #f2f8fa;
+
+  font-size: 36px;
+  font-weight: 850;
+
+  line-height: 1.05;
+
+  letter-spacing: -0.02em;
+}
+
+.card-small,
+.kpi-small,
+.muted {
+
+  margin-top: 8px;
+
+  color: #718a96;
+
+  font-size: 11px;
 }
 
 /* =========================================================
-   GOOD / GREEN
+   SESSION AREA
    ========================================================= */
 
-.good,
-.good-trade,
-.trade-good,
-.status-good,
-.condition-good,
-.is-good,
-.success {
-    border-color: rgba(40, 235, 155, 0.55) !important;
+.sessions-card,
+.session-section {
 
-    box-shadow:
-        0 0 0 1px rgba(40, 235, 155, 0.08),
-        0 0 22px rgba(40, 235, 155, 0.16),
-        inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  grid-column: span 12;
+
+  padding: 20px;
 }
 
-.good-trade,
-.trade-good,
-.status-good {
-    color: #48f0aa;
+.session-grid {
+
+  display: grid;
+
+  grid-template-columns:
+    repeat(4, minmax(0, 1fr));
+
+  gap: 10px;
+
+  margin-top: 14px;
+}
+
+.session {
+
+  min-height: 90px;
+
+  padding: 16px;
+
+  border: 1px solid
+    rgba(100, 150, 165, 0.16);
+
+  border-radius: 13px;
+
+  background:
+    rgba(7, 17, 24, 0.60);
+
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    background 0.2s ease;
+}
+
+.session:hover {
+
+  border-color:
+    rgba(120, 180, 195, 0.28);
+}
+
+.session.active {
+
+  border-color:
+    rgba(66, 225, 143, 0.65);
+
+  background:
+    rgba(22, 85, 57, 0.18);
+
+  box-shadow:
+    0 0 24px rgba(50, 220, 135, 0.10),
+    inset 0 0 20px rgba(50, 220, 135, 0.035);
+}
+
+.session-name {
+
+  color: #edf5f7;
+
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.session-time {
+
+  margin-top: 6px;
+
+  color: #7e9aa6;
+
+  font-size: 11px;
+}
+
+.session-state {
+
+  margin-top: 10px;
+
+  color: #667b84;
+
+  font-size: 10px;
+  font-weight: 800;
+
+  letter-spacing: 0.05em;
+}
+
+.session-state.ok {
+
+  color: #68e7a7;
+
+  text-shadow:
+    0 0 10px rgba(70,220,140,0.25);
 }
 
 /* =========================================================
-   AVOID / RED
+   TWO COLUMN CONTENT
    ========================================================= */
 
-.avoid,
-.avoid-trade,
-.trade-avoid,
-.status-avoid,
-.condition-bad,
-.is-bad,
-.danger {
-    border-color: rgba(255, 75, 92, 0.60) !important;
+.main-content,
+.content-grid,
+.middle-grid {
 
-    box-shadow:
-        0 0 0 1px rgba(255, 75, 92, 0.08),
-        0 0 26px rgba(255, 55, 75, 0.20),
-        inset 0 1px 0 rgba(255, 255, 255, 0.035);
-}
+  display: grid;
 
-.avoid-trade,
-.trade-avoid,
-.status-avoid {
-    color: #ff6978;
+  grid-template-columns:
+    minmax(0, 1fr)
+    minmax(0, 1fr);
+
+  gap: 14px;
+
+  margin-top: 14px;
 }
 
 /* =========================================================
-   CONDITIONAL / WARNING / YELLOW
+   NEWS CARD
    ========================================================= */
 
-.conditional,
-.warning,
-.warn,
-.status-warning,
-.condition-warning,
-.is-warning {
-    border-color: rgba(255, 190, 60, 0.58) !important;
+.news-card,
+.economic-card {
 
-    box-shadow:
-        0 0 0 1px rgba(255, 190, 60, 0.07),
-        0 0 24px rgba(255, 180, 45, 0.16),
-        inset 0 1px 0 rgba(255, 255, 255, 0.035);
+  min-height: 330px;
+
+  padding: 20px;
 }
 
-.conditional,
-.warning,
-.status-warning {
-    color: #ffc857;
+.news-header,
+.panel-header {
+
+  display: flex;
+
+  align-items: flex-start;
+  justify-content: space-between;
+
+  gap: 15px;
+}
+
+.news-title-main,
+.panel-title,
+.card-title {
+
+  color: #f0f7fa;
+
+  font-size: 20px;
+  font-weight: 850;
+}
+
+.badge {
+
+  display: inline-flex;
+
+  align-items: center;
+  justify-content: center;
+
+  min-height: 28px;
+
+  padding: 0 11px;
+
+  border: 1px solid
+    rgba(120, 170, 185, 0.25);
+
+  border-radius: 999px;
+
+  color: #a7c0ca;
+
+  background:
+    rgba(20, 34, 42, 0.55);
+
+  font-size: 9px;
+  font-weight: 850;
+
+  letter-spacing: 0.09em;
 }
 
 /* =========================================================
-   STATUS BADGES
+   BADGES
    ========================================================= */
 
-.badge,
-.status-badge,
-.status {
-    border-radius: 999px;
-    background: rgba(8, 17, 23, 0.65);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
+.badge.ok {
+
+  color: #67e7a4;
+
+  border-color:
+    rgba(68, 220, 140, 0.35);
+
+  background:
+    rgba(45, 190, 110, 0.08);
+
+  box-shadow:
+    0 0 15px rgba(45, 220, 135, 0.08);
+}
+
+.badge.warn {
+
+  color: #ffd66b;
+
+  border-color:
+    rgba(245, 190, 65, 0.35);
+
+  background:
+    rgba(245, 180, 45, 0.08);
+
+  box-shadow:
+    0 0 15px rgba(245, 190, 45, 0.07);
+}
+
+.badge.bad {
+
+  color: #ff7c85;
+
+  border-color:
+    rgba(255, 75, 90, 0.38);
+
+  background:
+    rgba(255, 65, 80, 0.08);
+
+  box-shadow:
+    0 0 15px rgba(255, 60, 80, 0.08);
 }
 
 /* =========================================================
-   GREEN STATUS
+   NEWS ROW
    ========================================================= */
 
-.badge.good,
-.badge.good-trade,
-.badge.success,
-.status.good,
-.status.good-trade,
-.status.success {
-    color: #4ff1ad;
-    border-color: rgba(40, 235, 155, 0.50);
-    box-shadow: 0 0 14px rgba(40, 235, 155, 0.14);
+.news-list {
+  display: flex;
+
+  flex-direction: column;
+
+  gap: 8px;
+
+  margin-top: 16px;
+}
+
+.news {
+
+  display: grid;
+
+  grid-template-columns:
+    auto
+    minmax(0, 1fr)
+    auto;
+
+  align-items: center;
+
+  gap: 13px;
+
+  min-height: 56px;
+
+  padding: 10px 12px;
+
+  border: 1px solid
+    rgba(110, 155, 170, 0.14);
+
+  border-radius: 11px;
+
+  background:
+    rgba(7, 18, 25, 0.55);
+}
+
+.news-title {
+
+  color: #e8f0f3;
+
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.news-meta {
+
+  margin-top: 3px;
+
+  color: #708894;
+
+  font-size: 9px;
+}
+
+.news > b {
+
+  color: #e8f1f4;
+
+  font-size: 12px;
 }
 
 /* =========================================================
-   RED STATUS
+   IMPACT LABELS
    ========================================================= */
 
-.badge.avoid,
-.badge.avoid-trade,
-.badge.danger,
-.status.avoid,
-.status.avoid-trade,
-.status.danger {
-    color: #ff6b78;
-    border-color: rgba(255, 75, 92, 0.55);
-    box-shadow: 0 0 16px rgba(255, 55, 75, 0.16);
+.impact {
+
+  min-width: 58px;
+
+  padding: 6px 8px;
+
+  border-radius: 6px;
+
+  text-align: center;
+
+  font-size: 8px;
+  font-weight: 900;
+
+  letter-spacing: 0.05em;
+}
+
+.impact.high {
+
+  color: #ff8a92;
+
+  background:
+    rgba(230, 55, 70, 0.20);
+
+  border: 1px solid
+    rgba(255, 70, 85, 0.20);
+}
+
+.impact.medium {
+
+  color: #ffd36a;
+
+  background:
+    rgba(235, 170, 45, 0.18);
+
+  border: 1px solid
+    rgba(245, 185, 55, 0.18);
+}
+
+.impact.low {
+
+  color: #6fe4a4;
+
+  background:
+    rgba(45, 185, 110, 0.17);
+
+  border: 1px solid
+    rgba(55, 210, 125, 0.18);
 }
 
 /* =========================================================
-   YELLOW STATUS
+   REGIME
    ========================================================= */
 
-.badge.conditional,
-.badge.warning,
-.status.conditional,
-.status.warning {
-    color: #ffc857;
-    border-color: rgba(255, 190, 60, 0.55);
-    box-shadow: 0 0 15px rgba(255, 180, 45, 0.14);
+.regime-card {
+
+  min-height: 330px;
+
+  padding: 20px;
+}
+
+.regime-main {
+
+  display: flex;
+
+  align-items: center;
+
+  gap: 20px;
+
+  margin: 20px 0;
+}
+
+.regime-score {
+
+  width: 82px;
+  height: 82px;
+
+  flex: 0 0 82px;
+
+  display: grid;
+
+  place-items: center;
+
+  border-radius: 50%;
+
+  border: 7px solid
+    rgba(58, 205, 125, 0.25);
+
+  box-shadow:
+    0 0 0 1px rgba(75, 225, 145, 0.16),
+    0 0 25px rgba(50, 210, 125, 0.10);
+
+  color: #eef7f8;
+
+  font-size: 22px;
+  font-weight: 850;
+}
+
+.regime-name {
+
+  color: #f2f7f8;
+
+  font-size: 19px;
+  font-weight: 850;
+}
+
+.regime-text {
+
+  margin-top: 6px;
+
+  color: #7d949e;
+
+  font-size: 11px;
+  line-height: 1.5;
 }
 
 /* =========================================================
-   ACTIVE FOREX SESSION
+   REGIME DATA
    ========================================================= */
 
-.session-card.active,
-.session.active,
-.active-session {
-    border-color: rgba(40, 235, 155, 0.58) !important;
+.regime-data,
+.metrics-grid {
 
-    background:
-        linear-gradient(
-            135deg,
-            rgba(40, 235, 155, 0.10),
-            rgba(13, 25, 33, 0.72)
-        );
+  display: grid;
 
-    box-shadow:
-        0 0 20px rgba(40, 235, 155, 0.14),
-        inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  grid-template-columns:
+    repeat(2, minmax(0, 1fr));
+
+  gap: 8px;
+}
+
+.metric {
+
+  min-height: 58px;
+
+  padding: 10px 12px;
+
+  border: 1px solid
+    rgba(100, 150, 165, 0.13);
+
+  border-radius: 10px;
+
+  background:
+    rgba(5, 15, 22, 0.45);
+}
+
+.metric-label {
+
+  color: #708a95;
+
+  font-size: 8px;
+  font-weight: 800;
+
+  letter-spacing: 0.08em;
+
+  text-transform: uppercase;
+}
+
+.metric-value {
+
+  margin-top: 5px;
+
+  color: #edf5f7;
+
+  font-size: 11px;
+  font-weight: 800;
 }
 
 /* =========================================================
-   NEWS IMPACT
+   TRADE FILTER
    ========================================================= */
 
-.high,
-.impact-high {
-    border-color: rgba(255, 75, 92, 0.45);
-    box-shadow: 0 0 15px rgba(255, 55, 75, 0.10);
+.trade-filter {
+
+  margin-top: 14px;
+
+  padding: 22px;
+
+  border-radius: 18px;
 }
 
-.medium,
-.impact-medium {
-    border-color: rgba(255, 190, 60, 0.42);
-    box-shadow: 0 0 15px rgba(255, 180, 45, 0.08);
+.trade-filter.state-good {
+
+  border-color:
+    rgba(55, 220, 135, 0.25);
+
+  box-shadow:
+    0 0 35px rgba(40, 220, 125, 0.07),
+    inset 0 0 30px rgba(40, 220, 125, 0.025);
 }
 
-.low,
-.impact-low {
-    border-color: rgba(40, 235, 155, 0.38);
+.trade-filter.state-bad {
+
+  border-color:
+    rgba(255, 70, 85, 0.25);
+
+  box-shadow:
+    0 0 35px rgba(255, 65, 80, 0.07),
+    inset 0 0 30px rgba(255, 65, 80, 0.025);
+}
+
+.trade-filter.state-warn {
+
+  border-color:
+    rgba(245, 185, 60, 0.22);
+
+  box-shadow:
+    0 0 30px rgba(245, 185, 60, 0.05);
+}
+
+.trade-filter-header {
+
+  display: flex;
+
+  align-items: flex-start;
+  justify-content: space-between;
+
+  gap: 15px;
+}
+
+.trade-filter-question {
+
+  margin-top: 4px;
+
+  color: #f2f7f8;
+
+  font-size: 20px;
+  font-weight: 850;
 }
 
 /* =========================================================
-   NORMAL INNER BOXES
+   DECISION
    ========================================================= */
 
-.info-box,
-.metric,
-.filter-card,
-.event,
-.event-row {
-    background: rgba(6, 16, 22, 0.58);
-    border: 1px solid rgba(100, 150, 165, 0.16);
-    border-radius: 13px;
+.decision {
+
+  display: inline-flex;
+
+  align-items: center;
+  justify-content: center;
+
+  min-height: 36px;
+
+  padding: 0 15px;
+
+  border-radius: 9px;
+
+  font-size: 11px;
+  font-weight: 900;
+
+  letter-spacing: 0.05em;
+
+  text-transform: uppercase;
+}
+
+.decision.good {
+
+  color: #6ff0aa;
+
+  background:
+    rgba(40, 200, 115, 0.16);
+
+  border: 1px solid
+    rgba(65, 225, 140, 0.28);
+
+  box-shadow:
+    0 0 22px rgba(50, 220, 130, 0.13);
+}
+
+.decision.bad {
+
+  color: #ff8990;
+
+  background:
+    rgba(235, 55, 70, 0.16);
+
+  border: 1px solid
+    rgba(255, 70, 85, 0.28);
+
+  box-shadow:
+    0 0 22px rgba(255, 65, 80, 0.13);
+}
+
+.decision.warn {
+
+  color: #ffd46c;
+
+  background:
+    rgba(235, 175, 45, 0.15);
+
+  border: 1px solid
+    rgba(245, 185, 55, 0.25);
+
+  box-shadow:
+    0 0 22px rgba(245, 185, 55, 0.10);
 }
 
 /* =========================================================
-   TEXT
+   FILTER ITEMS
    ========================================================= */
 
-h1,
-h2,
-h3,
-h4 {
-    color: #f2f7f8;
+.filter-grid {
+
+  display: grid;
+
+  grid-template-columns:
+    repeat(5, minmax(0, 1fr));
+
+  gap: 9px;
+
+  margin-top: 17px;
 }
 
-.muted,
-.subtitle,
-.description,
-.caption {
-    color: #8fa8b1;
+.filter-item {
+
+  min-height: 80px;
+
+  padding: 13px;
+
+  border: 1px solid
+    rgba(100, 150, 165, 0.14);
+
+  border-radius: 10px;
+
+  background:
+    rgba(6, 16, 23, 0.48);
 }
 
-.green,
-.text-good {
-    color: #4ff1ad !important;
+.filter-label {
+
+  color: #718a95;
+
+  font-size: 8px;
+  font-weight: 800;
+
+  letter-spacing: 0.08em;
+
+  text-transform: uppercase;
 }
 
-.red,
-.text-danger {
-    color: #ff6978 !important;
+.filter-value {
+
+  margin-top: 8px;
+
+  color: #eaf3f5;
+
+  font-size: 11px;
+  font-weight: 800;
 }
 
-.yellow,
-.text-warning {
-    color: #ffc857 !important;
+.filter-value.good {
+  color: #68e7a5;
+}
+
+.filter-value.bad {
+  color: #ff7c86;
+}
+
+.filter-value.warn {
+  color: #ffd369;
 }
 
 /* =========================================================
-   REMOVE DEMO LABELS / BADGES
+   DECISION REASON
    ========================================================= */
 
-/*
-   Any element explicitly marked as demo is hidden.
-   This does not affect the actual market values.
-*/
+.decision-reason {
 
-.demo,
-.demo-badge,
-.demo-label,
-[data-demo],
-[data-testid="demo"] {
-    display: none !important;
+  margin-top: 10px;
+
+  padding: 12px 15px;
+
+  border-radius: 10px;
+
+  color: #91a7b0;
+
+  background:
+    rgba(10, 22, 29, 0.55);
+
+  border: 1px solid
+    rgba(100, 150, 165, 0.12);
+
+  font-size: 10px;
+
+  line-height: 1.5;
 }
 
 /* =========================================================
-   RESPONSIVE
+   EMPTY NEWS
+   ========================================================= */
+
+.empty-news {
+
+  opacity: 0.8;
+}
+
+/* =========================================================
+   FOOTER
+   ========================================================= */
+
+footer,
+.footer {
+
+  width: min(1240px, calc(100% - 40px));
+
+  margin: 0 auto 25px;
+
+  padding: 12px 15px;
+
+  border: 1px solid
+    rgba(100, 150, 165, 0.10);
+
+  border-radius: 10px;
+
+  background:
+    rgba(10, 20, 27, 0.42);
+
+  color: #627b86;
+
+  font-size: 9px;
+
+  text-align: center;
+
+  backdrop-filter: blur(15px);
+  -webkit-backdrop-filter: blur(15px);
+}
+
+/* =========================================================
+   LINKS
+   ========================================================= */
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* =========================================================
+   MOBILE
    ========================================================= */
 
 @media (max-width: 900px) {
-    .card,
-    .panel,
-    .metric-card,
-    .session-card,
-    .news-card,
-    .regime-card,
-    .trade-filter,
-    .section,
-    .box {
-        border-radius: 15px;
-    }
+
+  .top-cards,
+  .summary-grid,
+  .kpi-grid {
+
+    grid-template-columns:
+      1fr;
+  }
+
+  .main-content,
+  .content-grid,
+  .middle-grid {
+
+    grid-template-columns:
+      1fr;
+  }
+
+  .session-grid {
+
+    grid-template-columns:
+      repeat(2, minmax(0, 1fr));
+  }
+
+  .filter-grid {
+
+    grid-template-columns:
+      repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 600px) {
-    body {
-        overflow-x: hidden;
-    }
 
-    .card,
-    .panel,
-    .metric-card,
-    .session-card,
-    .news-card,
-    .regime-card,
-    .trade-filter,
-    .section,
-    .box {
-        border-radius: 14px;
-        backdrop-filter: blur(14px);
-        -webkit-backdrop-filter: blur(14px);
-    }
+  .container,
+  main,
+  .dashboard,
+  .page,
+  .header-inner,
+  .header-content,
+  .topbar-inner,
+  footer,
+  .footer {
 
-    .good,
-    .good-trade,
-    .trade-good,
-    .avoid,
-    .avoid-trade,
-    .trade-avoid,
-    .conditional,
-    .warning {
-        box-shadow:
-            0 0 16px rgba(0, 0, 0, 0.16),
-            inset 0 1px 0 rgba(255, 255, 255, 0.035);
-    }
+    width: min(100% - 24px, 1240px);
+  }
+
+  header {
+    padding: 16px 0;
+  }
+
+  .logo,
+  .brand,
+  .brand-name {
+
+    font-size: 20px;
+  }
+
+  .clock-value,
+  .kpi-value,
+  .big-value {
+
+    font-size: 30px;
+  }
+
+  .session-grid {
+
+    grid-template-columns:
+      1fr;
+  }
+
+  .filter-grid {
+
+    grid-template-columns:
+      1fr;
+  }
+
+  .news {
+
+    grid-template-columns:
+      auto
+      minmax(0, 1fr);
+
+  }
+
+  .news > b {
+
+    grid-column: 2;
+  }
+
+  .regime-main {
+
+    align-items: flex-start;
+  }
 }

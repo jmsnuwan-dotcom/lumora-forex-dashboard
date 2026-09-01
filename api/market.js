@@ -6,6 +6,26 @@
 const DEFAULT_SYMBOL = "XAU/USD";
 const DEFAULT_INTERVAL = "1min";
 
+// Economic calendar feed is cached in the serverless instance.
+// The feed is refreshed at most once per hour to avoid unnecessary requests.
+const CALENDAR_URLS = [
+  "https://nfs.faireconomy.media/ff_calendar_thisweek.json",
+  "https://cdn-nfs.faireconomy.media/ff_calendar_thisweek.json"
+];
+const CALENDAR_CACHE_MS = 60 * 60 * 1000;
+const NEWS_LOOKAHEAD_MINUTES = 60;
+const NEWS_RECENT_MINUTES = 30;
+const MAJOR_CURRENCIES = new Set([
+  "USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "NZD", "CNY"
+]);
+
+let calendarCache = {
+  fetchedAt: 0,
+  events: null,
+  source: null,
+  error: null
+};
+
 export default async function handler(req, res) {
   try {
     const apiKey = process.env.TWELVE_DATA_API_KEY;
@@ -17,15 +37,12 @@ export default async function handler(req, res) {
       });
     }
 
-    const symbol =
-      process.env.LUMORA_SYMBOL || DEFAULT_SYMBOL;
+    const symbol = process.env.LUMORA_SYMBOL || DEFAULT_SYMBOL;
+    const interval = process.env.LUMORA_INTERVAL || DEFAULT_INTERVAL;
 
-    const interval =
-      process.env.LUMORA_INTERVAL || DEFAULT_INTERVAL;
-
-    // ==========================================================
-    // TWELVE DATA — M1 OHLC
-    // ==========================================================
+    // --------------------------------------------------------
+    // LIVE MARKET DATA
+    // --------------------------------------------------------
 
     const url =
       "https://api.twelvedata.com/time_series" +
@@ -35,429 +52,272 @@ export default async function handler(req, res) {
       `&apikey=${encodeURIComponent(apiKey)}`;
 
     const response = await fetch(url, {
-      headers: {
-        Accept: "application/json"
-      }
+      headers: { Accept: "application/json" }
     });
 
     if (!response.ok) {
-      throw new Error(
-        `Market API HTTP ${response.status}`
-      );
+      throw new Error(`Market API HTTP ${response.status}`);
     }
 
     const json = await response.json();
 
     if (!Array.isArray(json.values)) {
-      throw new Error(
-        json.message ||
-        "Market candle data unavailable"
-      );
+      throw new Error(json.message || "Market candle data unavailable");
     }
-
-    // EMA 200 requires enough candles.
-    if (json.values.length < 210) {
-      throw new Error(
-        `Not enough candles for EMA200 analysis: ${json.values.length}`
-      );
-    }
-
-    // ==========================================================
-    // NORMALIZE CANDLES
-    // ==========================================================
 
     const candles = json.values
-      .map(item => ({
-        open: Number(item.open),
-        high: Number(item.high),
-        low: Number(item.low),
-        close: Number(item.close),
-        volume: Number(item.volume || 0),
-        time: item.datetime
+      .map(x => ({
+        open: Number(x.open),
+        high: Number(x.high),
+        low: Number(x.low),
+        close: Number(x.close),
+        volume: Number(x.volume || 0),
+        time: x.datetime
       }))
-      .filter(item =>
-        Number.isFinite(item.open) &&
-        Number.isFinite(item.high) &&
-        Number.isFinite(item.low) &&
-        Number.isFinite(item.close)
+      .filter(x =>
+        [x.open, x.high, x.low, x.close].every(Number.isFinite)
       )
       .reverse();
 
     if (candles.length < 210) {
       throw new Error(
-        `Not enough valid candles: ${candles.length}`
+        `Not enough candles for EMA200 analysis: ${candles.length}`
       );
     }
 
-    const closes =
-      candles.map(candle => candle.close);
+    const closes = candles.map(x => x.close);
 
-    // ==========================================================
-    // INDICATORS
-    // ==========================================================
+    const e20 = last(ema(closes, 20));
+    const e50 = last(ema(closes, 50));
+    const e200 = last(ema(closes, 200));
+    const currentRSI = last(rsi(closes, 14));
+    const currentATR = last(atr(candles, 14));
+    const currentADX = last(adx(candles, 14));
+    const price = last(closes);
 
-    const ema20 =
-      ema(closes, 20);
-
-    const ema50 =
-      ema(closes, 50);
-
-    const ema200 =
-      ema(closes, 200);
-
-    const rsi14 =
-      rsi(closes, 14);
-
-    const atr14 =
-      atr(candles, 14);
-
-    const adx14 =
-      adx(candles, 14);
-
-    const price =
-      last(closes);
-
-    const e20 =
-      last(ema20);
-
-    const e50 =
-      last(ema50);
-
-    const e200 =
-      last(ema200);
-
-    const currentRSI =
-      last(rsi14);
-
-    const currentATR =
-      last(atr14);
-
-    const currentADX =
-      last(adx14);
-
-    // ==========================================================
-    // TREND
-    // ==========================================================
+    // --------------------------------------------------------
+    // DIRECTION / TREND
+    // --------------------------------------------------------
 
     let trend = "MIXED";
 
-    if (
-      Number.isFinite(e20) &&
-      Number.isFinite(e50) &&
-      Number.isFinite(e200)
-    ) {
-      if (
-        e20 > e50 &&
-        e50 > e200
-      ) {
-        trend = "BUY";
-      }
-
-      else if (
-        e20 < e50 &&
-        e50 < e200
-      ) {
-        trend = "SELL";
-      }
+    if (finite(e20, e50, e200)) {
+      if (e20 > e50 && e50 > e200) trend = "BUY";
+      else if (e20 < e50 && e50 < e200) trend = "SELL";
     }
 
-    // ==========================================================
-    // EMA STRUCTURE
-    // ==========================================================
+    const emaStructure =
+      trend === "BUY"
+        ? "BULLISH (20 > 50 > 200)"
+        : trend === "SELL"
+          ? "BEARISH (20 < 50 < 200)"
+          : "MIXED";
 
-    let emaStructure = "MIXED";
-
-    if (trend === "BUY") {
-      emaStructure =
-        "BULLISH (20 > 50 > 200)";
-    }
-
-    else if (trend === "SELL") {
-      emaStructure =
-        "BEARISH (20 < 50 < 200)";
-    }
-
-    // ==========================================================
+    // --------------------------------------------------------
     // VOLATILITY
-    // ==========================================================
+    // --------------------------------------------------------
 
-    const volatilityValue =
-      realizedVolatility(
-        closes,
-        30
-      );
+    const volatilityValue = realizedVolatility(closes, 30);
+    const volatility =
+      volatilityValue < 0.04
+        ? "LOW"
+        : volatilityValue >= 0.10
+          ? "HIGH"
+          : "NORMAL";
 
-    let volatility =
-      "NORMAL";
-
-    if (volatilityValue < 0.04) {
-      volatility = "LOW";
-    }
-
-    else if (volatilityValue >= 0.10) {
-      volatility = "HIGH";
-    }
-
-    // ==========================================================
+    // --------------------------------------------------------
     // MARKET SCORE
-    // ==========================================================
+    // --------------------------------------------------------
 
     let score = 0;
 
-    // Trend
-    if (trend !== "MIXED") {
-      score += 30;
-    }
+    if (trend !== "MIXED") score += 30;
 
-    // ADX
     if (Number.isFinite(currentADX)) {
-
-      if (currentADX >= 30) {
-        score += 25;
-      }
-
-      else if (currentADX >= 25) {
-        score += 18;
-      }
-
-      else if (currentADX >= 20) {
-        score += 10;
-      }
+      if (currentADX >= 30) score += 25;
+      else if (currentADX >= 25) score += 18;
+      else if (currentADX >= 20) score += 10;
     }
 
-    // RSI
     if (Number.isFinite(currentRSI)) {
-
-      if (
-        currentRSI >= 45 &&
-        currentRSI <= 65
-      ) {
-        score += 15;
-      }
-
-      else if (
-        currentRSI >= 35 &&
-        currentRSI <= 70
-      ) {
-        score += 9;
-      }
-
-      else {
-        score += 3;
-      }
+      if (currentRSI >= 45 && currentRSI <= 65) score += 15;
+      else if (currentRSI >= 35 && currentRSI <= 70) score += 9;
+      else score += 3;
     }
 
-    // Volatility
-    if (volatility === "NORMAL") {
-      score += 15;
-    }
+    if (volatility === "NORMAL") score += 15;
+    else if (volatility === "LOW") score += 8;
+    else score += 3;
 
-    else if (volatility === "LOW") {
-      score += 8;
-    }
-
-    else {
-      score += 3;
-    }
-
-    // Price vs EMA20
     if (
       Number.isFinite(e20) &&
-      (
-        (
-          trend === "BUY" &&
-          price > e20
-        ) ||
-        (
-          trend === "SELL" &&
-          price < e20
-        )
-      )
+      ((trend === "BUY" && price > e20) ||
+        (trend === "SELL" && price < e20))
     ) {
       score += 15;
-    }
-
-    else {
+    } else {
       score += 4;
     }
 
-    score =
-      clamp(
-        Math.round(score),
-        0,
-        100
-      );
+    score = clamp(Math.round(score), 0, 100);
 
-    // ==========================================================
-    // FOREX SESSION
-    // ==========================================================
+    // --------------------------------------------------------
+    // BUY / SELL STRENGTH
+    // These are directional technical-strength values, not broker
+    // orders and not the MT5 EA's signal score.
+    // --------------------------------------------------------
 
-    const session =
-      getCurrentSessions();
+    const buyStrength = directionalStrength({
+      direction: "BUY",
+      trend,
+      e20,
+      price,
+      currentRSI,
+      currentADX,
+      volatility
+    });
 
-    const sessionOpen =
-      session.length > 0;
+    const sellStrength = directionalStrength({
+      direction: "SELL",
+      trend,
+      e20,
+      price,
+      currentRSI,
+      currentADX,
+      volatility
+    });
 
-    // ==========================================================
+    // --------------------------------------------------------
+    // SESSION
+    // Sessions are evaluated in their own real timezone. This
+    // means overlap is valid (for example Sydney + London).
+    // --------------------------------------------------------
+
+    const session = getCurrentSessions();
+    const sessionOpen = session.length > 0;
+
+    // --------------------------------------------------------
     // ECONOMIC CALENDAR
-    // ==========================================================
-    //
-    // IMPORTANT:
-    // We do NOT invent news data.
-    //
-    // Until a verified economic-calendar API is connected,
-    // news state remains UNKNOWN.
-    //
+    // --------------------------------------------------------
 
-    const newsAvailable = false;
+    const calendar = await getEconomicCalendar();
+    const now = new Date();
 
-    const newsRisk = "UNKNOWN";
+    const relevantNews = calendar.events
+      .filter(event => MAJOR_CURRENCIES.has(event.currency))
+      .map(event => ({
+        ...event,
+        minutesFromNow: Math.round(
+          (event.timestamp - now.getTime()) / 60000
+        )
+      }))
+      .filter(event => event.minutesFromNow >= -NEWS_RECENT_MINUTES)
+      .filter(event => event.minutesFromNow <= 24 * 60)
+      .sort((a, b) => a.timestamp - b.timestamp);
 
-    const news = [];
+    const highRiskEvent = relevantNews.find(event =>
+      event.impact === "HIGH" &&
+      event.minutesFromNow >= -NEWS_RECENT_MINUTES &&
+      event.minutesFromNow <= NEWS_LOOKAHEAD_MINUTES
+    );
 
-    // ==========================================================
-    // FINAL MARKET CONDITION
-    // ==========================================================
+    const mediumRiskEvent = relevantNews.find(event =>
+      event.impact === "MEDIUM" &&
+      event.minutesFromNow >= 0 &&
+      event.minutesFromNow <= 30
+    );
 
-    let condition =
-      "CONDITIONAL";
+    const newsRisk =
+      !calendar.available
+        ? "UNKNOWN"
+        : highRiskEvent
+          ? "HIGH"
+          : mediumRiskEvent
+            ? "MEDIUM"
+            : "LOW";
 
+    const newsAvailable = calendar.available;
+
+    // --------------------------------------------------------
+    // FINAL CONDITION
+    // --------------------------------------------------------
+
+    let condition = "CONDITIONAL";
     let reason =
       "Technical conditions are available, but live economic-calendar risk is not verified.";
 
-    // No major session
     if (!sessionOpen) {
-
-      condition =
-        "AVOID TRADE";
-
+      condition = "AVOID TRADE";
+      reason = "No major forex session is currently open.";
+    } else if (newsRisk === "HIGH") {
+      condition = "AVOID TRADE";
       reason =
-        "No major forex session is currently open.";
-    }
-
-    // Very weak market
-    else if (score < 45) {
-
-      condition =
-        "AVOID TRADE";
-
-      reason =
-        "Trend strength and market structure are too weak.";
-    }
-
-    // High volatility + weak score
-    else if (
-      volatility === "HIGH" &&
-      score < 75
-    ) {
-
-      condition =
-        "AVOID TRADE";
-
+        `High-impact economic event near market time: ${highRiskEvent.title}.`;
+    } else if (score < 45) {
+      condition = "AVOID TRADE";
+      reason = "Trend strength and market structure are too weak.";
+    } else if (volatility === "HIGH" && score < 75) {
+      condition = "AVOID TRADE";
       reason =
         "Volatility is high while market structure is not strong enough.";
-    }
-
-    // News unavailable
-    else if (!newsAvailable) {
-
-      condition =
-        "CONDITIONAL";
-
+    } else if (!newsAvailable) {
+      condition = "CONDITIONAL";
       reason =
         "Technical conditions are available, but live economic-calendar risk is not verified.";
-    }
-
-    // Strong technical condition
-    else if (score >= 75) {
-
-      condition =
-        "GOOD TO TRADE";
-
+    } else if (newsRisk === "MEDIUM") {
+      condition = "CONDITIONAL";
       reason =
-        "Trend, momentum, volatility, session and news conditions are aligned.";
+        `Medium-impact economic event is within 30 minutes: ${mediumRiskEvent.title}.`;
+    } else if (score >= 75) {
+      condition = "GOOD TO TRADE";
+      reason =
+        "Technical conditions are strong, an active session is open, and no high-impact event is near.";
+    } else {
+      condition = "CONDITIONAL";
+      reason =
+        "Conditions are not fully aligned. Wait for stronger confirmation.";
     }
 
-    // ==========================================================
-    // ENTRY QUALITY
-    // ==========================================================
+    const entryQuality =
+      score >= 75 && trend !== "MIXED"
+        ? "GOOD"
+        : score >= 55
+          ? "CONDITIONAL"
+          : "WEAK";
 
-    let entryQuality =
-      "WEAK";
-
-    if (score >= 75) {
-      entryQuality = "GOOD";
-    }
-
-    else if (score >= 55) {
-      entryQuality = "CONDITIONAL";
-    }
-
-    // ==========================================================
-    // RESPONSE
-    // ==========================================================
+    const nextEvent = relevantNews.find(event => event.timestamp >= now.getTime()) || null;
 
     return res.status(200).json({
-
       available: true,
-
       symbol,
-
       timeframe: interval,
-
-      price:
-        round(price),
-
+      price: round(price),
       score,
-
       condition,
-
       reason,
-
       trend,
-
-      adx:
-        round(currentADX),
-
-      atr:
-        round(currentATR),
-
-      rsi:
-        round(currentRSI),
-
+      direction: trend,
+      buyStrength,
+      sellStrength,
+      adx: round(currentADX),
+      atr: round(currentATR),
+      rsi: round(currentRSI),
       volatility,
-
-      ema:
-        emaStructure,
-
-      entry_quality:
-        entryQuality,
-
+      ema: emaStructure,
+      entry_quality: entryQuality,
       newsAvailable,
-
       newsRisk,
-
-      news,
-
+      news: relevantNews.slice(0, 12).map(formatNewsForClient),
+      nextNews: nextEvent ? formatNewsForClient(nextEvent) : null,
+      newsSource: calendar.source,
       session,
-
-      updatedAt:
-        new Date().toISOString()
+      updatedAt: new Date().toISOString()
     });
-
-  }
-
-  catch (error) {
-
-    console.error(
-      "Lumora market API error:",
-      error
-    );
+  } catch (error) {
+    console.error("Lumora market API error:", error);
 
     return res.status(503).json({
-
       available: false,
-
       error:
         error instanceof Error
           ? error.message
@@ -466,746 +326,429 @@ export default async function handler(req, res) {
   }
 }
 
+// ============================================================
+// ECONOMIC CALENDAR FETCH
+// ============================================================
+
+async function getEconomicCalendar() {
+  const now = Date.now();
+
+  if (
+    calendarCache.events &&
+    now - calendarCache.fetchedAt < CALENDAR_CACHE_MS
+  ) {
+    return {
+      available: true,
+      events: calendarCache.events,
+      source: calendarCache.source,
+      error: null
+    };
+  }
+
+  let lastError = null;
+
+  for (const url of CALENDAR_URLS) {
+    try {
+      const response = await fetch(url, {
+        headers: {
+          Accept: "application/json",
+          "User-Agent": "Lumora-Market-Dashboard/1.0"
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Calendar HTTP ${response.status}`);
+      }
+
+      const json = await response.json();
+
+      if (!Array.isArray(json)) {
+        throw new Error("Economic calendar returned an invalid format");
+      }
+
+      const events = json
+        .map(normalizeCalendarEvent)
+        .filter(Boolean)
+        .sort((a, b) => a.timestamp - b.timestamp);
+
+      if (!events.length) {
+        throw new Error("Economic calendar returned no valid events");
+      }
+
+      calendarCache = {
+        fetchedAt: now,
+        events,
+        source: "ForexFactory weekly calendar feed",
+        error: null
+      };
+
+      return {
+        available: true,
+        events,
+        source: calendarCache.source,
+        error: null
+      };
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  calendarCache = {
+    fetchedAt: now,
+    events: null,
+    source: null,
+    error: lastError instanceof Error ? lastError.message : "Calendar unavailable"
+  };
+
+  return {
+    available: false,
+    events: [],
+    source: null,
+    error: calendarCache.error
+  };
+}
+
+function normalizeCalendarEvent(item) {
+  if (!item || typeof item !== "object") return null;
+
+  const timestamp = new Date(item.date || item.datetime || item.time || "").getTime();
+  if (!Number.isFinite(timestamp)) return null;
+
+  const currency = String(
+    item.country || item.currency || ""
+  ).trim().toUpperCase();
+
+  const impactRaw = String(item.impact || "LOW").trim().toUpperCase();
+  const impact =
+    impactRaw === "HIGH"
+      ? "HIGH"
+      : impactRaw === "MEDIUM"
+        ? "MEDIUM"
+        : "LOW";
+
+  const title = String(
+    item.title || item.name || "Economic event"
+  ).trim();
+
+  return {
+    timestamp,
+    currency,
+    impact,
+    title,
+    forecast: item.forecast ?? null,
+    previous: item.previous ?? null
+  };
+}
+
+function formatNewsForClient(event) {
+  const date = new Date(event.timestamp);
+
+  return {
+    time: date.toLocaleTimeString("en-GB", {
+      timeZone: "Asia/Colombo",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false
+    }),
+    date: date.toLocaleDateString("en-GB", {
+      timeZone: "Asia/Colombo",
+      day: "2-digit",
+      month: "short"
+    }),
+    impact: event.impact,
+    currency: event.currency,
+    title: event.title,
+    meta: `${event.currency} • ${event.impact} impact`,
+    timestamp: event.timestamp
+  };
+}
+
+// ============================================================
+// DIRECTIONAL TECHNICAL STRENGTH
+// ============================================================
+
+function directionalStrength({
+  direction,
+  trend,
+  e20,
+  price,
+  currentRSI,
+  currentADX,
+  volatility
+}) {
+  let value = 0;
+
+  if (trend === direction) value += 35;
+
+  if (Number.isFinite(currentADX)) {
+    if (currentADX >= 30) value += 25;
+    else if (currentADX >= 25) value += 18;
+    else if (currentADX >= 20) value += 10;
+  }
+
+  if (Number.isFinite(currentRSI)) {
+    if (direction === "BUY") {
+      if (currentRSI >= 50 && currentRSI <= 65) value += 20;
+      else if (currentRSI >= 45 && currentRSI <= 70) value += 10;
+      else value += 3;
+    } else {
+      if (currentRSI >= 35 && currentRSI <= 50) value += 20;
+      else if (currentRSI >= 30 && currentRSI <= 55) value += 10;
+      else value += 3;
+    }
+  }
+
+  if (Number.isFinite(e20) && Number.isFinite(price)) {
+    if (direction === "BUY" && price > e20) value += 15;
+    else if (direction === "SELL" && price < e20) value += 15;
+    else value += 2;
+  }
+
+  if (volatility === "NORMAL") value += 5;
+  else if (volatility === "LOW") value += 3;
+  else value += 1;
+
+  return clamp(Math.round(value), 0, 100);
+}
 
 // ============================================================
 // EMA
 // ============================================================
 
 function ema(values, period) {
+  const out = Array(values.length).fill(null);
+  if (values.length < period) return out;
 
-  const output =
-    new Array(values.length)
-      .fill(null);
+  const k = 2 / (period + 1);
+  let value = values.slice(0, period).reduce((a, b) => a + b, 0) / period;
+  out[period - 1] = value;
 
-  if (
-    values.length < period
-  ) {
-    return output;
+  for (let i = period; i < values.length; i++) {
+    value = values[i] * k + value * (1 - k);
+    out[i] = value;
   }
 
-  const multiplier =
-    2 / (period + 1);
-
-  let value =
-    values
-      .slice(0, period)
-      .reduce(
-        (sum, item) =>
-          sum + item,
-        0
-      ) / period;
-
-  output[period - 1] =
-    value;
-
-  for (
-    let i = period;
-    i < values.length;
-    i++
-  ) {
-
-    value =
-      values[i] *
-      multiplier +
-      value *
-      (1 - multiplier);
-
-    output[i] =
-      value;
-  }
-
-  return output;
+  return out;
 }
 
-
 // ============================================================
-// RSI — Wilder RSI
+// RSI
 // ============================================================
 
 function rsi(values, period) {
+  const out = Array(values.length).fill(null);
+  if (values.length <= period) return out;
 
-  const output =
-    new Array(values.length)
-      .fill(null);
+  let gain = 0;
+  let loss = 0;
 
-  if (
-    values.length <= period
-  ) {
-    return output;
+  for (let i = 1; i <= period; i++) {
+    const d = values[i] - values[i - 1];
+    if (d >= 0) gain += d;
+    else loss -= d;
   }
 
-  let gains = 0;
-  let losses = 0;
+  let avgGain = gain / period;
+  let avgLoss = loss / period;
 
-  for (
-    let i = 1;
-    i <= period;
-    i++
-  ) {
-
-    const difference =
-      values[i] -
-      values[i - 1];
-
-    if (difference >= 0) {
-      gains += difference;
-    }
-
-    else {
-      losses -= difference;
-    }
-  }
-
-  let averageGain =
-    gains / period;
-
-  let averageLoss =
-    losses / period;
-
-  output[period] =
-    averageLoss === 0
+  out[period] =
+    avgLoss === 0
       ? 100
-      : 100 -
-        100 /
-        (
-          1 +
-          averageGain /
-          averageLoss
-        );
+      : 100 - 100 / (1 + avgGain / avgLoss);
 
-  for (
-    let i = period + 1;
-    i < values.length;
-    i++
-  ) {
+  for (let i = period + 1; i < values.length; i++) {
+    const d = values[i] - values[i - 1];
+    const g = Math.max(0, d);
+    const l = Math.max(0, -d);
 
-    const difference =
-      values[i] -
-      values[i - 1];
+    avgGain = (avgGain * (period - 1) + g) / period;
+    avgLoss = (avgLoss * (period - 1) + l) / period;
 
-    const gain =
-      Math.max(
-        0,
-        difference
-      );
-
-    const loss =
-      Math.max(
-        0,
-        -difference
-      );
-
-    averageGain =
-      (
-        averageGain *
-        (period - 1) +
-        gain
-      ) /
-      period;
-
-    averageLoss =
-      (
-        averageLoss *
-        (period - 1) +
-        loss
-      ) /
-      period;
-
-    output[i] =
-      averageLoss === 0
+    out[i] =
+      avgLoss === 0
         ? 100
-        : 100 -
-          100 /
-          (
-            1 +
-            averageGain /
-            averageLoss
-          );
+        : 100 - 100 / (1 + avgGain / avgLoss);
   }
 
-  return output;
+  return out;
 }
-
 
 // ============================================================
 // ATR
 // ============================================================
 
 function atr(candles, period) {
+  const tr = candles.map((c, i) => {
+    if (i === 0) return c.high - c.low;
 
-  const trueRanges =
-    candles.map(
-      (candle, index) => {
+    const previousClose = candles[i - 1].close;
 
-        if (index === 0) {
-
-          return (
-            candle.high -
-            candle.low
-          );
-        }
-
-        const previousClose =
-          candles[index - 1]
-            .close;
-
-        return Math.max(
-
-          candle.high -
-          candle.low,
-
-          Math.abs(
-            candle.high -
-            previousClose
-          ),
-
-          Math.abs(
-            candle.low -
-            previousClose
-          )
-        );
-      }
+    return Math.max(
+      c.high - c.low,
+      Math.abs(c.high - previousClose),
+      Math.abs(c.low - previousClose)
     );
+  });
 
-  return wilderAverage(
-    trueRanges,
-    period
-  );
+  return wilderAverage(tr, period);
 }
 
-
 // ============================================================
-// ADX — Correct Wilder ADX
-// ============================================================
-//
-// IMPORTANT FIX:
-//
-// The old implementation returned the Wilder SUM
-// as the final ADX value.
-//
-// Example:
-//
-// Real ADX ≈ 46.76
-//
-// Old result:
-//
-// 46.76 × 14 ≈ 654.64
-//
-// That is why the dashboard showed:
-//
-// ADX = 654.63
-//
-// This implementation calculates:
-//
-// +DM
-// -DM
-// TR
-// +DI
-// -DI
-// DX
 // ADX
-//
-// and returns ADX on the normal 0–100 scale.
-//
+// ============================================================
 
 function adx(candles, period) {
+  const n = candles.length;
+  const tr = Array(n).fill(0);
+  const plusDM = Array(n).fill(0);
+  const minusDM = Array(n).fill(0);
 
-  const length =
-    candles.length;
+  for (let i = 1; i < n; i++) {
+    const c = candles[i];
+    const p = candles[i - 1];
 
-  const trueRanges =
-    new Array(length)
-      .fill(0);
+    const up = c.high - p.high;
+    const down = p.low - c.low;
 
-  const plusDM =
-    new Array(length)
-      .fill(0);
+    tr[i] = Math.max(
+      c.high - c.low,
+      Math.abs(c.high - p.close),
+      Math.abs(c.low - p.close)
+    );
 
-  const minusDM =
-    new Array(length)
-      .fill(0);
-
-  for (
-    let i = 1;
-    i < length;
-    i++
-  ) {
-
-    const current =
-      candles[i];
-
-    const previous =
-      candles[i - 1];
-
-    const upMove =
-      current.high -
-      previous.high;
-
-    const downMove =
-      previous.low -
-      current.low;
-
-    trueRanges[i] =
-      Math.max(
-
-        current.high -
-        current.low,
-
-        Math.abs(
-          current.high -
-          previous.close
-        ),
-
-        Math.abs(
-          current.low -
-          previous.close
-        )
-      );
-
-    plusDM[i] =
-      (
-        upMove >
-        downMove &&
-        upMove > 0
-      )
-        ? upMove
-        : 0;
-
-    minusDM[i] =
-      (
-        downMove >
-        upMove &&
-        downMove > 0
-      )
-        ? downMove
-        : 0;
+    plusDM[i] = up > down && up > 0 ? up : 0;
+    minusDM[i] = down > up && down > 0 ? down : 0;
   }
 
-  // Wilder sums
-  const atrSum =
-    wilderSum(
-      trueRanges,
-      period
-    );
+  const atrS = wilderSum(tr, period);
+  const plusS = wilderSum(plusDM, period);
+  const minusS = wilderSum(minusDM, period);
+  const dx = Array(n).fill(null);
 
-  const plusDMSum =
-    wilderSum(
-      plusDM,
-      period
-    );
+  for (let i = 0; i < n; i++) {
+    if (!Number.isFinite(atrS[i]) || atrS[i] <= 0) continue;
 
-  const minusDMSum =
-    wilderSum(
-      minusDM,
-      period
-    );
-
-  const dx =
-    new Array(length)
-      .fill(null);
-
-  // ==========================================================
-  // DI + DX
-  // ==========================================================
-
-  for (
-    let i = 0;
-    i < length;
-    i++
-  ) {
-
-    if (
-      !Number.isFinite(
-        atrSum[i]
-      ) ||
-      atrSum[i] <= 0
-    ) {
-      continue;
-    }
-
-    const plusDI =
-      100 *
-      plusDMSum[i] /
-      atrSum[i];
-
-    const minusDI =
-      100 *
-      minusDMSum[i] /
-      atrSum[i];
-
-    const total =
-      plusDI +
-      minusDI;
+    const pdi = 100 * plusS[i] / atrS[i];
+    const mdi = 100 * minusS[i] / atrS[i];
+    const total = pdi + mdi;
 
     if (total > 0) {
-
-      dx[i] =
-        100 *
-        Math.abs(
-          plusDI -
-          minusDI
-        ) /
-        total;
+      dx[i] = 100 * Math.abs(pdi - mdi) / total;
     }
   }
 
-  // ==========================================================
-  // FINAL ADX
-  // ==========================================================
-  //
-  // IMPORTANT:
-  //
-  // ADX is the Wilder average of DX.
-  //
-  // NOT the SUM.
-  //
+  // ADX is the Wilder average of DX, not the raw Wilder sum.
+  const out = Array(n).fill(null);
+  const valid = [];
 
-  const adxOutput =
-    new Array(length)
-      .fill(null);
-
-  const validDX = [];
-
-  for (
-    let i = 0;
-    i < length;
-    i++
-  ) {
-
-    if (
-      Number.isFinite(dx[i])
-    ) {
-
-      validDX.push({
-        index: i,
-        value: dx[i]
-      });
-    }
+  for (let i = 0; i < n; i++) {
+    if (dx[i] !== null) valid.push({ i, v: dx[i] });
   }
 
-  if (
-    validDX.length < period
-  ) {
-    return adxOutput;
+  if (valid.length < period) return out;
+
+  let sum = 0;
+  for (let i = 0; i < period; i++) sum += valid[i].v;
+
+  let previous = sum / period;
+  out[valid[period - 1].i] = previous;
+
+  for (let i = period; i < valid.length; i++) {
+    previous =
+      (previous * (period - 1) + valid[i].v) / period;
+    out[valid[i].i] = previous;
   }
 
-  let initialSum = 0;
-
-  for (
-    let i = 0;
-    i < period;
-    i++
-  ) {
-
-    initialSum +=
-      validDX[i].value;
-  }
-
-  let currentADX =
-    initialSum /
-    period;
-
-  adxOutput[
-    validDX[period - 1].index
-  ] =
-    currentADX;
-
-  for (
-    let i = period;
-    i < validDX.length;
-    i++
-  ) {
-
-    currentADX =
-      (
-        currentADX *
-        (period - 1) +
-        validDX[i].value
-      ) /
-      period;
-
-    adxOutput[
-      validDX[i].index
-    ] =
-      currentADX;
-  }
-
-  return adxOutput;
+  return out;
 }
 
+function wilderSum(values, period) {
+  const out = Array(values.length).fill(null);
+  if (values.length < period) return out;
 
-// ============================================================
-// WILDER SUM
-// ============================================================
+  let sum = 0;
+  for (let i = 0; i < period; i++) sum += values[i] || 0;
+  out[period - 1] = sum;
 
-function wilderSum(
-  values,
-  period
-) {
-
-  const output =
-    new Array(values.length)
-      .fill(null);
-
-  if (
-    values.length < period
-  ) {
-    return output;
+  for (let i = period; i < values.length; i++) {
+    sum = sum - sum / period + (values[i] || 0);
+    out[i] = sum;
   }
 
-  let value = 0;
-
-  for (
-    let i = 0;
-    i < period;
-    i++
-  ) {
-
-    value +=
-      values[i] || 0;
-  }
-
-  output[period - 1] =
-    value;
-
-  for (
-    let i = period;
-    i < values.length;
-    i++
-  ) {
-
-    value =
-      value -
-      value / period +
-      (values[i] || 0);
-
-    output[i] =
-      value;
-  }
-
-  return output;
+  return out;
 }
 
-
-// ============================================================
-// WILDER AVERAGE
-// ============================================================
-
-function wilderAverage(
-  values,
-  period
-) {
-
-  const sums =
-    wilderSum(
-      values,
-      period
-    );
-
-  return sums.map(
-    value =>
-      value === null
-        ? null
-        : value / period
+function wilderAverage(values, period) {
+  return wilderSum(values, period).map(v =>
+    v === null ? null : v / period
   );
 }
 
-
-// ============================================================
-// REALIZED VOLATILITY
-// ============================================================
-
-function realizedVolatility(
-  closes,
-  lookback
-) {
-
+function realizedVolatility(closes, lookback) {
   const returns = [];
 
   for (
-    let i =
-      Math.max(
-        1,
-        closes.length -
-        lookback
-      );
-
+    let i = Math.max(1, closes.length - lookback);
     i < closes.length;
-
     i++
   ) {
-
-    if (
-      closes[i - 1] === 0
-    ) {
-      continue;
+    if (closes[i - 1] !== 0) {
+      returns.push((closes[i] - closes[i - 1]) / closes[i - 1]);
     }
-
-    returns.push(
-      (
-        closes[i] -
-        closes[i - 1]
-      ) /
-      closes[i - 1]
-    );
   }
 
-  if (
-    returns.length === 0
-  ) {
-    return 0;
-  }
+  if (!returns.length) return 0;
 
-  return (
-    Math.sqrt(
-      returns.reduce(
-        (
-          sum,
-          value
-        ) =>
-          sum +
-          value * value,
-        0
-      ) /
+  return Math.sqrt(
+    returns.reduce((sum, value) => sum + value * value, 0) /
       returns.length
-    ) * 100
-  );
+  ) * 100;
 }
 
-
 // ============================================================
-// CURRENT FOREX SESSIONS
+// FOREX SESSION
 // ============================================================
 
 function getCurrentSessions() {
+  const now = new Date();
 
-  const now =
-    new Date();
-
-  const sessions = [
-
-    [
-      "Sydney",
-      "Australia/Sydney",
-      22 * 60,
-      7 * 60
-    ],
-
-    [
-      "Tokyo",
-      "Asia/Tokyo",
-      0,
-      9 * 60
-    ],
-
-    [
-      "London",
-      "Europe/London",
-      8 * 60,
-      17 * 60
-    ],
-
-    [
-      "New York",
-      "America/New_York",
-      13 * 60,
-      22 * 60
-    ]
-
+  const sessionDefinitions = [
+    ["Sydney", "Australia/Sydney", 22 * 60, 7 * 60],
+    ["Tokyo", "Asia/Tokyo", 0, 9 * 60],
+    ["London", "Europe/London", 8 * 60, 17 * 60],
+    ["New York", "America/New_York", 13 * 60, 22 * 60]
   ];
 
-  return sessions
+  return sessionDefinitions
+    .filter(([, timeZone, start, end]) => {
+      const localDate = new Date(
+        now.toLocaleString("en-US", { timeZone })
+      );
 
-    .filter(
-      (
-        [
-          ,
-          timeZone,
-          start,
-          end
-        ]
-      ) => {
+      const minutes =
+        localDate.getHours() * 60 + localDate.getMinutes();
 
-        const date =
-          new Date(
-            now.toLocaleString(
-              "en-US",
-              {
-                timeZone
-              }
-            )
-          );
-
-        const minutes =
-          date.getHours() *
-          60 +
-          date.getMinutes();
-
-        if (
-          start < end
-        ) {
-
-          return (
-            minutes >= start &&
-            minutes < end
-          );
-        }
-
-        return (
-          minutes >= start ||
-          minutes < end
-        );
-      }
-    )
-
-    .map(
-      ([name]) =>
-        name
-    );
+      return start < end
+        ? minutes >= start && minutes < end
+        : minutes >= start || minutes < end;
+    })
+    .map(([name]) => name);
 }
-
-
-// ============================================================
-// HELPERS
-// ============================================================
 
 function finite(...values) {
-
-  return values.every(
-    Number.isFinite
-  );
+  return values.every(Number.isFinite);
 }
-
 
 function last(values) {
-
-  return values[
-    values.length - 1
-  ];
+  return values[values.length - 1];
 }
 
-
-function clamp(
-  value,
-  min,
-  max
-) {
-
-  return Math.max(
-    min,
-    Math.min(
-      max,
-      value
-    )
-  );
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
 }
-
 
 function round(value) {
-
   return Number.isFinite(value)
-    ? Number(
-        value.toFixed(2)
-      )
+    ? Number(value.toFixed(2))
     : null;
 }

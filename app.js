@@ -537,7 +537,7 @@ function renderDecision() {
   setText("entryQuality", marketData.entryQuality || "—");
   setText("decisionReason", reason);
 
-  handleGoodToTradeNotification(decision);
+  checkGoodToTradeNotification(decision, reason);
 }
 
 /* =========================================================
@@ -819,19 +819,6 @@ async function showLumoraNotification(title, body) {
   }
 }
 
-function handleGoodToTradeNotification(decision) {
-  const current = String(decision || "").toUpperCase();
-  const previous = localStorage.getItem("lumora:lastDecision") || "";
-
-  if (current === "GOOD TO TRADE" && previous !== "GOOD TO TRADE") {
-    showLumoraNotification(
-      "Lumora — GOOD TO TRADE",
-      marketData.reason || "Market conditions meet the current dashboard criteria."
-    );
-  }
-
-  localStorage.setItem("lumora:lastDecision", current);
-}
 
 function setupAlertButton() {
   const button = $("enableAlertsBtn");
@@ -849,21 +836,67 @@ let deferredInstallPrompt = null;
 let lumoraRegistration = null;
 let lastCondition = null;
 
+/*
+   Capture the native install event immediately.
+   This prevents missing beforeinstallprompt on Chromium.
+*/
+window.addEventListener("beforeinstallprompt", event => {
+  event.preventDefault();
+  deferredInstallPrompt = event;
+
+  const button = $("installBtn");
+  if (button) {
+    button.hidden = false;
+    button.disabled = false;
+    button.textContent = "INSTALL APP";
+  }
+
+  console.log("Lumora PWA install prompt available.");
+});
+
+window.addEventListener("appinstalled", () => {
+  deferredInstallPrompt = null;
+
+  const button = $("installBtn");
+  if (button) {
+    button.textContent = "INSTALLED";
+    button.disabled = true;
+  }
+
+  console.log("Lumora PWA installed.");
+});
+
 function setButtonText(id, text, enabled = true) {
   const button = $(id);
   if (!button) return;
+
   button.textContent = text;
   button.disabled = !enabled;
+}
+
+function isIOSDevice() {
+  return /iphone|ipad|ipod/i.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+}
+
+function isStandalone() {
+  return (
+    window.matchMedia("(display-mode: standalone)").matches ||
+    window.navigator.standalone === true
+  );
 }
 
 function showInstallGuide(type = "browser") {
   const modal = $("installGuide");
   const text = $("installGuideText");
   const steps = $("installGuideSteps");
+
   if (!modal || !text || !steps) return;
 
   if (type === "ios") {
-    text.textContent = "On iPhone/iPad, iOS does not allow a website button to directly install the app. Use Safari's Share menu once, then Lumora will appear on your Home Screen.";
+    text.textContent =
+      "On iPhone/iPad, Safari does not provide a JavaScript one-tap install prompt. Add Lumora to your Home Screen from Safari.";
+
     steps.innerHTML = `
       <div><b>1.</b> Open Lumora in <b>Safari</b>.</div>
       <div><b>2.</b> Tap the <b>Share</b> button.</div>
@@ -871,11 +904,13 @@ function showInstallGuide(type = "browser") {
       <div><b>4.</b> Tap <b>Add</b>.</div>
     `;
   } else {
-    text.textContent = "Your browser did not provide the one-tap install prompt. You can still install Lumora from the browser menu.";
+    text.textContent =
+      "Your browser did not expose the native install prompt. Use the browser's install option.";
+
     steps.innerHTML = `
-      <div><b>Chrome desktop:</b> use the Install icon in the address bar or ⋮ → Cast, save, and share → Install page as app.</div>
+      <div><b>Chrome desktop:</b> click the install icon in the address bar, or use ⋮ → Cast, save, and share → Install page as app.</div>
       <div><b>Android Chrome:</b> tap ⋮ → Add to Home screen / Install app.</div>
-      <div><b>Important:</b> use the HTTPS Vercel site.</div>
+      <div><b>Important:</b> use the HTTPS Vercel deployment.</div>
     `;
   }
 
@@ -887,104 +922,155 @@ function closeInstallGuide() {
   if (modal) modal.hidden = true;
 }
 
+async function installLumora() {
+  /*
+     Chromium native PWA installation.
+  */
+  if (deferredInstallPrompt) {
+    try {
+      deferredInstallPrompt.prompt();
+
+      const choice = await deferredInstallPrompt.userChoice;
+
+      if (choice && choice.outcome === "accepted") {
+        setButtonText("installBtn", "INSTALLING...", false);
+      } else {
+        setButtonText("installBtn", "INSTALL APP", true);
+      }
+    } catch (error) {
+      console.error("Lumora native install error:", error);
+      setButtonText("installBtn", "INSTALL APP", true);
+    } finally {
+      deferredInstallPrompt = null;
+    }
+
+    return;
+  }
+
+  /*
+     iOS does not expose beforeinstallprompt.
+  */
+  if (isIOSDevice()) {
+    if (isStandalone()) {
+      setButtonText("installBtn", "INSTALLED", false);
+    } else {
+      showInstallGuide("ios");
+    }
+    return;
+  }
+
+  /*
+     Fallback for browsers that support PWA but do not expose
+     the native prompt at this moment.
+  */
+  showInstallGuide("browser");
+}
+
 function setupInstallButton() {
   const button = $("installBtn");
   if (!button) return;
 
-  // Always show the button. Some browsers do not fire
-  // beforeinstallprompt, especially iOS/Safari.
   button.hidden = false;
 
   document.querySelectorAll("[data-close-install]").forEach(element => {
     element.addEventListener("click", closeInstallGuide);
   });
+
   const guideDone = $("installGuideDone");
-  if (guideDone) guideDone.addEventListener("click", closeInstallGuide);
+  if (guideDone) {
+    guideDone.addEventListener("click", closeInstallGuide);
+  }
 
-  window.addEventListener("beforeinstallprompt", event => {
-    event.preventDefault();
-    deferredInstallPrompt = event;
-    button.hidden = false;
-    setButtonText("installBtn", "INSTALL APP");
-  });
+  button.addEventListener("click", installLumora);
 
-  button.addEventListener("click", async () => {
-    if (deferredInstallPrompt) {
-      deferredInstallPrompt.prompt();
-      try {
-        const choice = await deferredInstallPrompt.userChoice;
-        if (choice && choice.outcome === "accepted") {
-          setButtonText("installBtn", "INSTALLED");
-        }
-      } catch (error) {
-        console.log("Install prompt error:", error);
-      }
-      deferredInstallPrompt = null;
-      return;
-    }
-
-    // iPhone/iPad does not expose a JavaScript install prompt.
-    // Show an in-app guide instead of a browser alert.
-    const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
-    if (isIOS) {
-      showInstallGuide("ios");
-      return;
-    }
-
-    // Chromium may hide beforeinstallprompt in some situations.
-    // Give the user a clear in-app guide rather than a browser alert.
-    showInstallGuide("browser");
-  });
-
-  window.addEventListener("appinstalled", () => {
-    setButtonText("installBtn", "INSTALLED");
-  });
+  if (isStandalone()) {
+    setButtonText("installBtn", "INSTALLED", false);
+  }
 }
 
-async function setupAlerts() {
+/* =========================================================
+   NOTIFICATION PERMISSION
+   ========================================================= */
+
+function updateAlertButton() {
   const button = $("enableAlertsBtn");
   if (!button) return;
 
   if (!("Notification" in window)) {
-    setButtonText("enableAlertsBtn", "ALERTS UNSUPPORTED", false);
+    button.textContent = "ALERTS UNSUPPORTED";
+    button.disabled = true;
+    button.classList.remove("enabled");
     return;
   }
 
   if (Notification.permission === "granted") {
+    button.textContent = "ALERTS ON";
+    button.disabled = false;
     button.classList.add("enabled");
-    button.textContent = "ALERTS ENABLED";
+  } else if (Notification.permission === "denied") {
+    button.textContent = "ALERTS BLOCKED";
+    button.disabled = false;
+    button.classList.remove("enabled");
+  } else {
+    button.textContent = "ENABLE ALERTS";
+    button.disabled = false;
+    button.classList.remove("enabled");
+  }
+}
+
+async function requestMarketAlerts() {
+  if (!("Notification" in window)) {
+    updateAlertButton();
     return;
   }
 
-  button.addEventListener("click", async () => {
-    try {
-      const permission = await Notification.requestPermission();
-      if (permission === "granted") {
-        button.classList.add("enabled");
-        button.textContent = "ALERTS ENABLED";
+  /*
+     On iPhone/iPad the web app should be installed first.
+  */
+  if (isIOSDevice() && !isStandalone()) {
+    showInstallGuide("ios");
+    return;
+  }
 
-        // Give the user an immediate test notification so we know
-        // the permission + service worker path works.
-        await sendLumoraNotification(
-          "Lumora alerts are ON.",
-          "You will be notified when market conditions become GOOD TO TRADE."
-        );
-      } else {
-        button.textContent = "ALLOW ALERTS";
-      }
-    } catch (error) {
-      console.error("Notification permission error:", error);
+  try {
+    const permission = await Notification.requestPermission();
+
+    updateAlertButton();
+
+    if (permission === "granted") {
+      await sendLumoraNotification(
+        "Lumora alerts are ON",
+        "You will be notified when the market changes to GOOD TO TRADE."
+      );
     }
-  });
+  } catch (error) {
+    console.error("Lumora notification permission error:", error);
+  }
+}
+
+function setupAlertButton() {
+  const button = $("enableAlertsBtn");
+  if (!button) return;
+
+  updateAlertButton();
+
+  button.addEventListener("click", requestMarketAlerts);
 }
 
 async function sendLumoraNotification(title, body) {
   try {
-    const registration =
-      lumoraRegistration ||
-      ("serviceWorker" in navigator
-        ? await navigator.serviceWorker.ready
-        : null);
+    if (
+      !("Notification" in window) ||
+      Notification.permission !== "granted"
+    ) {
+      return false;
+    }
+
+    let registration = lumoraRegistration;
+
+    if (!registration && "serviceWorker" in navigator) {
+      registration = await navigator.serviceWorker.ready;
+    }
 
     if (registration && registration.showNotification) {
       await registration.showNotification(title, {
@@ -995,30 +1081,44 @@ async function sendLumoraNotification(title, body) {
         renotify: true,
         vibrate: [200, 100, 200]
       });
+
       return true;
     }
 
-    if (Notification.permission === "granted") {
-      new Notification(title, { body });
-      return true;
-    }
+    new Notification(title, {
+      body,
+      icon: "/icons/icon-192.png",
+      tag: "lumora-market-alert"
+    });
+
+    return true;
   } catch (error) {
     console.error("Lumora notification error:", error);
+    return false;
   }
-  return false;
 }
 
 async function checkGoodToTradeNotification(condition, reason) {
   const current = String(condition || "").trim().toUpperCase();
+
   if (!current) return;
 
   const previous = lastCondition;
   lastCondition = current;
 
   if (current !== "GOOD TO TRADE") return;
-  if (!("Notification" in window) || Notification.permission !== "granted") return;
 
-  // Notify on the first GOOD state and whenever the market returns to GOOD.
+  if (
+    !("Notification" in window) ||
+    Notification.permission !== "granted"
+  ) {
+    return;
+  }
+
+  /*
+     Notify only when the state changes into GOOD TO TRADE.
+     This prevents notification spam on the 30-second refresh.
+  */
   if (previous === "GOOD TO TRADE") return;
 
   await sendLumoraNotification(
@@ -1031,34 +1131,30 @@ async function checkGoodToTradeNotification(condition, reason) {
    SERVICE WORKER
    ========================================================= */
 
-function setupServiceWorker() {
-
-  if (
-    !("serviceWorker" in navigator)
-  ) {
-    return;
+async function setupServiceWorker() {
+  if (!("serviceWorker" in navigator)) {
+    console.warn("Lumora service workers are not supported.");
+    return null;
   }
 
-  window.addEventListener(
-    "load",
-    () => {
+  try {
+    const registration = await navigator.serviceWorker.register(
+      "./sw.js?v=6",
+      { scope: "./" }
+    );
 
-      navigator.serviceWorker
-        .register("./sw.js?v=5")
-        .then(registration => {
-          lumoraRegistration = registration;
-          console.log("Lumora service worker ready.");
-        })
-        .catch(error => {
+    lumoraRegistration = registration;
 
-          console.error(
-            "Service worker registration failed:",
-            error
-          );
+    console.log(
+      "Lumora service worker registered:",
+      registration.scope
+    );
 
-        });
-    }
-  );
+    return registration;
+  } catch (error) {
+    console.error("Service worker registration failed:", error);
+    return null;
+  }
 }
 
 /* =========================================================

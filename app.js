@@ -466,12 +466,22 @@ function renderDecision() {
     openSessions.length > 0;
 
   /*
-     We do NOT make a fake trading decision
-     without real market/news data.
+     SAFE DECISION SYSTEM
+
+     🟢 GOOD TO TRADE
+     🔴 AVOID TRADE
+     🟡 CONDITIONAL
+
+     If live data is not available,
+     keep the dashboard in the warning
+     state and never fake a trade signal.
   */
 
   let state = "warn";
-  let decision = "DATA UNAVAILABLE";
+
+  let decision =
+    "DATA UNAVAILABLE";
+
   let reason =
     "Live market intelligence data is not connected.";
 
@@ -498,6 +508,14 @@ function renderDecision() {
         marketData.entryQuality || ""
       ).toUpperCase();
 
+    /*
+       🔴 AVOID TRADE
+
+       Highest priority condition.
+       High-impact news overrides
+       normal market conditions.
+    */
+
     if (highImpact) {
 
       state = "bad";
@@ -508,7 +526,18 @@ function renderDecision() {
       reason =
         "High-impact news risk detected. Avoid fresh entries around major releases.";
 
-    } else if (
+    }
+
+    /*
+       🟢 GOOD TO TRADE
+
+       Session is open
+       + valid market score
+       + score >= 75
+       + entry quality is not POOR
+    */
+
+    else if (
       sessionOpen &&
       Number.isFinite(score) &&
       score >= 75 &&
@@ -523,17 +552,35 @@ function renderDecision() {
       reason =
         "Market conditions meet the current dashboard criteria.";
 
-    } else {
+    }
+
+    /*
+       🟡 CONDITIONAL
+
+       Data exists but conditions
+       are not strong enough.
+    */
+
+    else {
 
       state = "warn";
 
       decision =
-        "CAUTION";
+        "CONDITIONAL";
 
       reason =
-        "Conditions are not strong enough for a high-quality setup.";
+        "Conditions are not fully aligned. Wait for stronger confirmation.";
     }
   }
+
+  /*
+     IMPORTANT:
+     style.css can use these classes:
+
+     body.state-good
+     body.state-bad
+     body.state-warn
+  */
 
   document.body.className =
     `state-${state}`;
@@ -607,6 +654,7 @@ function renderDecision() {
    This function is intentionally flexible.
 
    It can accept:
+
    {
       market: {...},
       news: [...]

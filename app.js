@@ -459,151 +459,85 @@ function setText(id, value) {
 
 function renderDecision() {
 
-  const openSessions = getOpenSessions();
-  const sessionOpen = openSessions.length > 0;
+  const openSessions =
+    getOpenSessions();
+
+  const sessionOpen =
+    openSessions.length > 0;
 
   /*
-     =========================================================
-     LUMORA SAFE DECISION ENGINE
-
-     STATES:
-       good    = GOOD TRADE
-       bad     = AVOID TRADE
-       warn    = CONDITIONAL
-       neutral = DATA UNAVAILABLE
-
-     IMPORTANT:
-     Never classify missing/invalid live data as a trade state.
-     =========================================================
+     We do NOT make a fake trading decision
+     without real market/news data.
   */
 
-  let state = "neutral";
+  let state = "warn";
   let decision = "DATA UNAVAILABLE";
   let reason =
     "Live market intelligence data is not connected.";
 
-  /*
-     DATA UNAVAILABLE
-     ---------------------------------------------------------
-     This has absolute priority.
-  */
   if (!marketData.available) {
 
-    state = "neutral";
+    state = "warn";
 
-    decision = "DATA UNAVAILABLE";
+    decision =
+      "DATA UNAVAILABLE";
 
     reason =
-      "Live market intelligence data is unavailable. No trading decision is generated.";
+      "Connect the live market and economic-calendar data before making a trading decision.";
 
   } else {
 
     const highImpact =
-      Boolean(marketData.newsRisk);
+      marketData.newsRisk;
 
     const score =
-      toNumberOrNull(marketData.score);
+      Number(marketData.score);
 
     const entryQuality =
       String(
         marketData.entryQuality || ""
-      ).trim().toUpperCase();
+      ).toUpperCase();
 
-    /*
-       A valid market-data response must contain enough
-       information to evaluate the decision.
-    */
-    const validScore =
-      Number.isFinite(score);
-
-    /*
-       RED — AVOID TRADE
-       Highest priority.
-    */
     if (highImpact) {
 
       state = "bad";
 
-      decision = "AVOID TRADE";
+      decision =
+        "AVOID TRADE";
 
       reason =
         "High-impact news risk detected. Avoid fresh entries around major releases.";
 
-    }
-
-    /*
-       GREEN — GOOD TRADE
-
-       Only when:
-       - a major session is open
-       - score is valid
-       - score >= 75
-       - entry quality is not POOR
-    */
-    else if (
+    } else if (
       sessionOpen &&
-      validScore &&
+      Number.isFinite(score) &&
       score >= 75 &&
       entryQuality !== "POOR"
     ) {
 
       state = "good";
 
-      decision = "GOOD TRADE";
+      decision =
+        "GOOD TO TRADE";
 
       reason =
         "Market conditions meet the current dashboard criteria.";
 
-    }
-
-    /*
-       YELLOW — CONDITIONAL
-
-       Data exists, but the full GOOD TRADE criteria
-       are not satisfied.
-    */
-    else {
+    } else {
 
       state = "warn";
 
-      decision = "CONDITIONAL";
+      decision =
+        "CONDITIONAL";
 
       reason =
-        "Market data is available, but conditions are not fully aligned. Wait for stronger confirmation.";
+        "Conditions are not fully aligned. Wait for stronger confirmation.";
     }
   }
 
-  /*
-     =========================================================
-     APPLY STATE — ROBUSTLY
-     =========================================================
+  document.body.className =
+    `state-${state}`;
 
-     Remove every previous state first. This prevents a stale
-     yellow/green/red class from remaining after data changes.
-  */
-  const stateClasses = [
-    "state-neutral",
-    "state-good",
-    "state-bad",
-    "state-warn"
-  ];
-
-  document.body.classList.remove(...stateClasses);
-
-  if (document.documentElement) {
-    document.documentElement.classList.remove(...stateClasses);
-    document.documentElement.classList.add(`state-${state}`);
-  }
-
-  document.body.classList.add(`state-${state}`);
-
-  document.body.dataset.lumoraState = state;
-
-  /*
-     =========================================================
-     MARKET STATUS
-     =========================================================
-  */
   setText(
     "marketStatus",
     decision
@@ -614,11 +548,6 @@ function renderDecision() {
     reason
   );
 
-  /*
-     =========================================================
-     DECISION BADGE
-     =========================================================
-  */
   const decisionElement =
     $("decision");
 
@@ -631,11 +560,6 @@ function renderDecision() {
       `decision ${state}`;
   }
 
-  /*
-     =========================================================
-     DECISION DETAILS
-     =========================================================
-  */
   setText(
     "dSession",
     sessionOpen
@@ -659,7 +583,7 @@ function renderDecision() {
 
   setText(
     "dRegime",
-    Number.isFinite(toNumberOrNull(marketData.score))
+    marketData.score !== null
       ? `${marketData.score}/100`
       : "—"
   );
@@ -683,7 +607,6 @@ function renderDecision() {
    This function is intentionally flexible.
 
    It can accept:
-
    {
       market: {...},
       news: [...]
@@ -720,27 +643,7 @@ function applyDashboardData(data) {
         ? data.events
         : [];
 
-  const hasMarketObject =
-    market &&
-    typeof market === "object" &&
-    Object.keys(market).length > 0;
-
-  const hasUsableMarketValue =
-    hasMarketObject &&
-    (
-      market.score !== undefined ||
-      market.regime_score !== undefined ||
-      market.overall_score !== undefined ||
-      market.trend !== undefined ||
-      market.adx !== undefined ||
-      market.atr !== undefined ||
-      market.volatility !== undefined ||
-      market.ema !== undefined ||
-      market.ema_structure !== undefined ||
-      market.entry_quality !== undefined
-    );
-
-  marketData.available = Boolean(hasUsableMarketValue);
+  marketData.available = true;
 
   marketData.symbol =
     market.symbol ||
@@ -760,11 +663,13 @@ function applyDashboardData(data) {
   marketData.name =
     market.name ||
     market.regime_name ||
+    market.condition ||
     null;
 
   marketData.text =
     market.text ||
     market.description ||
+    market.reason ||
     null;
 
   marketData.trend =
@@ -791,14 +696,22 @@ function applyDashboardData(data) {
 
   marketData.entryQuality =
     market.entry_quality ||
+    market.entryQuality ||
     null;
+
+  const newsRiskValue =
+    String(market.newsRisk || "")
+      .trim()
+      .toUpperCase();
 
   marketData.newsRisk =
     news.some(
       item =>
         String(item.impact || "")
           .toUpperCase() === "HIGH"
-    );
+    ) ||
+    newsRiskValue === "HIGH" ||
+    newsRiskValue === "HIGH RISK";
 
   renderNews(news);
   renderMarketData();
@@ -828,17 +741,15 @@ function toNumberOrNull(value) {
 }
 
 /* =========================================================
-   OPTIONAL API LOADER
+   LIVE API LOADER
    =========================================================
 
-   No endpoint is hard-coded here because the actual
-   backend API route has not yet been established.
-
-   This prevents the frontend from pretending that
-   a non-existing API is live.
+   The Vercel backend exposes the live market endpoint at
+   /api/market. The browser calls the same-origin endpoint,
+   so no API key is exposed to the client.
    ========================================================= */
 
-async function loadDashboardData(endpoint) {
+async function loadDashboardData(endpoint = "/api/market") {
 
   if (!endpoint) {
     return false;
@@ -874,27 +785,6 @@ async function loadDashboardData(endpoint) {
       "Lumora dashboard API error:",
       error
     );
-
-    /*
-       API failure = unavailable.
-       Clear the previous live state so the dashboard cannot
-       continue showing an old GOOD/AVOID/CONDITIONAL state.
-    */
-    marketData.available = false;
-    marketData.score = null;
-    marketData.name = null;
-    marketData.text = null;
-    marketData.trend = null;
-    marketData.adx = null;
-    marketData.atr = null;
-    marketData.volatility = null;
-    marketData.ema = null;
-    marketData.newsRisk = false;
-    marketData.entryQuality = null;
-
-    renderNews([]);
-    renderMarketData();
-    renderDecision();
 
     return false;
   }
@@ -1005,26 +895,6 @@ function setupServiceWorker() {
 function initDashboard() {
 
   /*
-     Initial safe state.
-     Always start neutral until real data is received.
-  */
-  document.body.classList.remove(
-    "state-good",
-    "state-bad",
-    "state-warn"
-  );
-  document.body.classList.add("state-neutral");
-
-  if (document.documentElement) {
-    document.documentElement.classList.remove(
-      "state-good",
-      "state-bad",
-      "state-warn"
-    );
-    document.documentElement.classList.add("state-neutral");
-  }
-
-  /*
      Initial safe state
   */
 
@@ -1052,11 +922,18 @@ function initDashboard() {
   );
 
   /*
-     Decision refresh
+     Initial live market load
   */
+  loadDashboardData();
 
+  /*
+     Refresh live market data every 30 seconds.
+     The API remains the single source of truth.
+  */
   setInterval(
-    renderDecision,
+    () => {
+      loadDashboardData();
+    },
     30000
   );
 }

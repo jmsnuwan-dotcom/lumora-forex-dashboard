@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lumora Forex Market Dashboard</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <div class="brand">LUMORA</div>
+      <div class="subtitle">Forex Market Intelligence Dashboard</div>
+    </div>
+    <div class="live"><span></span> LIVE MARKET</div>
+  </header>
+
+  <main>
+    <section class="hero-grid">
+      <div class="card clock-card">
+        <div class="label">COLOMBO TIME</div>
+        <div id="clock" class="clock">--:--:--</div>
+        <div id="date" class="muted">---</div>
+      </div>
+      <div class="card session-card">
+        <div class="label">CURRENT FOREX SESSION</div>
+        <div id="session" class="big-value">Loading...</div>
+        <div id="sessionDetail" class="muted">---</div>
+      </div>
+      <div class="card status-card">
+        <div class="label">MARKET STATUS</div>
+        <div id="marketStatus" class="big-value">ANALYZING</div>
+        <div id="marketStatusDetail" class="muted">Calculating session conditions</div>
+      </div>
+    </section>
+
+    <section class="sessions">
+      <div class="section-title">FOREX SESSIONS</div>
+      <div class="session-grid" id="sessionGrid"></div>
+    </section>
+
+    <section class="dashboard-grid">
+      <div class="card news-card">
+        <div class="card-head">
+          <div>
+            <div class="label">TODAY'S NEWS</div>
+            <h2>Economic Calendar</h2>
+          </div>
+          <div id="newsRisk" class="badge">CHECKING</div>
+        </div>
+        <div id="newsList" class="news-list"></div>
+        <p class="note">News shown here is demo data. Connect a live economic-calendar API before using it for real trading decisions.</p>
+      </div>
+
+      <div class="card regime-card">
+        <div class="card-head">
+          <div>
+            <div class="label">XAUUSD • M1</div>
+            <h2>Market Regime</h2>
+          </div>
+          <div id="regimeBadge" class="badge">ANALYZING</div>
+        </div>
+        <div class="regime-score">
+          <div class="score-ring"><span id="regimeScore">--</span><small>/100</small></div>
+          <div>
+            <div id="regimeName" class="regime-name">Waiting for market data</div>
+            <div id="regimeText" class="muted">Connect live price/indicator data to calculate regime.</div>
+          </div>
+        </div>
+        <div class="metrics">
+          <div><span>Trend</span><b id="trend">—</b></div>
+          <div><span>ADX</span><b id="adx">—</b></div>
+          <div><span>ATR</span><b id="atr">—</b></div>
+          <div><span>Volatility</span><b id="volatility">—</b></div>
+          <div><span>EMA Structure</span><b id="ema">—</b></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card decision-card">
+      <div class="card-head">
+        <div>
+          <div class="label">LUMORA TRADE FILTER</div>
+          <h2>Should I Trade Now?</h2>
+        </div>
+        <div id="decision" class="decision">ANALYZING</div>
+      </div>
+      <div class="decision-grid">
+        <div><span>Session</span><b id="dSession">—</b></div>
+        <div><span>News Risk</span><b id="dNews">—</b></div>
+        <div><span>Regime</span><b id="dRegime">—</b></div>
+        <div><span>Entry Quality</span><b id="entryQuality">—</b></div>
+      </div>
+      <div id="decisionReason" class="reason">Waiting for market inputs...</div>
+    </section>
+
+    <section class="card disclaimer">
+      <b>Important:</b> This dashboard is decision-support software, not financial advice. Do not treat the demo regime/news values as live trading signals.
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

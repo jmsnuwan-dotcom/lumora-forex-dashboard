@@ -53,23 +53,11 @@ function nowIn(timeZone) {
    ========================================================= */
 
 function isOpen(session) {
-  /*
-     Session hours are standard FOREX UTC windows.
-     We intentionally calculate from UTC instead of each
-     city's local timezone. This prevents DST/local-time
-     differences from producing the wrong active sessions.
-
-     Sydney:    22:00 -> 07:00 UTC
-     Tokyo:     00:00 -> 09:00 UTC
-     London:    08:00 -> 17:00 UTC
-     New York:  13:00 -> 22:00 UTC
-  */
-
-  const now = new Date();
+  const d = nowIn(session.tz);
 
   const minutes =
-    now.getUTCHours() * 60 +
-    now.getUTCMinutes();
+    d.getHours() * 60 +
+    d.getMinutes();
 
   const [start, end] = session.hours
     .split("–")
@@ -77,6 +65,14 @@ function isOpen(session) {
       const [h, m] = value.split(":").map(Number);
       return h * 60 + m;
     });
+
+  /*
+     Normal session:
+     08:00 -> 17:00
+
+     Overnight session:
+     22:00 -> 07:00
+  */
 
   if (start < end) {
     return (
@@ -236,7 +232,7 @@ function renderNews(newsData = []) {
       </div>
     `;
 
-    updateNewsRisk("UNKNOWN");
+    updateNewsRisk(false);
     return;
   }
 
@@ -311,25 +307,19 @@ function renderNews(newsData = []) {
    NEWS RISK
    ========================================================= */
 
-function updateNewsRisk(status) {
+function updateNewsRisk(highImpact) {
   const risk = $("newsRisk");
 
   if (!risk) {
     return;
   }
 
-  const normalized =
-    String(status || "UNKNOWN").toUpperCase();
-
-  if (normalized === "HIGH") {
+  if (highImpact) {
     risk.textContent = "HIGH IMPACT";
     risk.className = "badge warn";
-  } else if (normalized === "LOW") {
+  } else {
     risk.textContent = "LOW RISK";
     risk.className = "badge ok";
-  } else {
-    risk.textContent = "NOT VERIFIED";
-    risk.className = "badge warn";
   }
 }
 
@@ -366,19 +356,10 @@ const marketData = {
   volatility: null,
   ema: null,
 
-  newsRisk: null,
-  newsAvailable: false,
+  newsRisk: false,
   entryQuality: null,
-
-  scoreBreakdown: {
-    trend: 0,
-    adx: 0,
-    rsi: 0,
-    volatility: 0,
-    priceVsEma20: 0,
-    totalRaw: null,
-    maxRaw: 100
-  }
+  condition: null,
+  reason: null
 };
 
 /* =========================================================
@@ -399,22 +380,10 @@ function renderMarketData() {
     marketData.name || "DATA UNAVAILABLE"
   );
 
-  const baseRegimeText =
-    marketData.text ||
-    "Live market analysis data is not connected.";
-
-  const b = marketData.scoreBreakdown;
-
-  const breakdownText =
-    Number.isFinite(b.totalRaw)
-      ? `Score: Trend +${b.trend} | ADX +${b.adx} | RSI +${b.rsi} | Volatility +${b.volatility} | EMA +${b.priceVsEma20}`
-      : "";
-
   setText(
     "regimeText",
-    breakdownText
-      ? `${baseRegimeText} ${breakdownText}`
-      : baseRegimeText
+    marketData.text ||
+      "Live market analysis data is not connected."
   );
 
   setText(
@@ -455,23 +424,17 @@ function renderMarketData() {
 
   setText(
     "scoreTrend",
-    Number.isFinite(b.totalRaw)
-      ? `Trend +${b.trend}`
-      : "—"
+    "—"
   );
 
   setText(
     "scoreMomentum",
-    Number.isFinite(b.totalRaw)
-      ? `ADX +${b.adx} | RSI +${b.rsi}`
-      : "—"
+    "—"
   );
 
   setText(
     "scoreNews",
-    Number.isFinite(b.totalRaw)
-      ? `Volatility +${b.volatility} | EMA +${b.priceVsEma20}`
-      : "—"
+    "—"
   );
 }
 
@@ -498,163 +461,83 @@ function setText(id, value) {
 
 function renderDecision() {
 
-  const openSessions =
-    getOpenSessions();
-
-  const sessionOpen =
-    openSessions.length > 0;
-
-  /*
-     We do NOT make a fake trading decision
-     without real market/news data.
-  */
+  const openSessions = getOpenSessions();
+  const sessionOpen = openSessions.length > 0;
 
   let state = "warn";
   let decision = "DATA UNAVAILABLE";
-  let reason =
-    "Live market intelligence data is not connected.";
+  let reason = "Live market intelligence data is not connected.";
 
   if (!marketData.available) {
-
     state = "warn";
+    decision = "DATA UNAVAILABLE";
+    reason = "Connect the live market and economic-calendar data before making a trading decision.";
+  } else if (marketData.condition) {
+    decision = String(marketData.condition).toUpperCase();
+    reason = marketData.reason || "Market conditions are being evaluated.";
 
-    decision =
-      "DATA UNAVAILABLE";
-
-    reason =
-      "Connect the live market and economic-calendar data before making a trading decision.";
-
+    if (decision === "GOOD TO TRADE") {
+      state = "good";
+    } else if (decision === "AVOID TRADE") {
+      state = "bad";
+    } else {
+      state = "warn";
+      decision = "CONDITIONAL";
+    }
   } else {
-
-    const highImpact =
-      marketData.newsRisk === true;
-
-    const newsVerified =
-      marketData.newsAvailable === true &&
-      marketData.newsRisk !== null;
-
-    const score =
-      Number(marketData.score);
-
-    const entryQuality =
-      String(
-        marketData.entryQuality || ""
-      ).toUpperCase();
+    const highImpact = marketData.newsRisk;
+    const score = Number(marketData.score);
+    const entryQuality = String(marketData.entryQuality || "").toUpperCase();
 
     if (highImpact) {
-
       state = "bad";
-
-      decision =
-        "AVOID TRADE";
-
-      reason =
-        "High-impact news risk detected. Avoid fresh entries around major releases.";
-
-    } else if (
-      !newsVerified
-    ) {
-
-      state = "warn";
-
-      decision =
-        "CONDITIONAL";
-
-      reason =
-        "Technical conditions are available, but live economic-calendar risk is not verified.";
-
-    } else if (
-      sessionOpen &&
-      Number.isFinite(score) &&
-      score >= 75 &&
-      entryQuality !== "POOR"
-    ) {
-
+      decision = "AVOID TRADE";
+      reason = "High-impact news risk detected. Avoid fresh entries around major releases.";
+    } else if (sessionOpen && Number.isFinite(score) && score >= 75 && entryQuality !== "POOR") {
       state = "good";
-
-      decision =
-        "GOOD TO TRADE";
-
-      reason =
-        "Market conditions meet the current dashboard criteria.";
-
+      decision = "GOOD TO TRADE";
+      reason = "Market conditions meet the current dashboard criteria.";
     } else {
-
       state = "warn";
-
-      decision =
-        "CONDITIONAL";
-
-      reason =
-        "Conditions are not fully aligned. Wait for stronger confirmation.";
+      decision = "CONDITIONAL";
+      reason = "Conditions are not fully aligned. Wait for stronger confirmation.";
     }
   }
 
-  document.body.className =
-    `state-${state}`;
+  document.body.className = `state-${state}`;
 
-  setText(
-    "marketStatus",
-    decision
-  );
+  setText("marketStatus", decision);
+  setText("marketStatusDetail", reason);
 
-  setText(
-    "marketStatusDetail",
-    reason
-  );
-
-  const decisionElement =
-    $("decision");
-
+  const decisionElement = $("decision");
   if (decisionElement) {
-
-    decisionElement.textContent =
-      decision;
-
-    decisionElement.className =
-      `decision ${state}`;
+    decisionElement.textContent = decision;
+    decisionElement.className = `decision ${state}`;
   }
 
   setText(
     "dSession",
     sessionOpen
-      ? openSessions
-          .map(s => s.name)
-          .join(" + ")
-          .toUpperCase()
+      ? openSessions.map(s => s.name).join(" + ").toUpperCase()
       : "CLOSED"
   );
 
   setText(
     "dNews",
     marketData.available
-      ? (
-          marketData.newsRisk === true
-            ? "HIGH RISK"
-            : marketData.newsRisk === false
-              ? "LOW"
-              : "UNKNOWN"
-        )
+      ? (marketData.newsRisk === true ? "HIGH RISK" : String(marketData.newsRisk || "LOW").toUpperCase())
       : "—"
   );
 
   setText(
     "dRegime",
-    marketData.score !== null
-      ? `${marketData.score}/100`
-      : "—"
+    marketData.score !== null ? `${marketData.score}/100` : "—"
   );
 
-  setText(
-    "entryQuality",
-    marketData.entryQuality ||
-      "—"
-  );
+  setText("entryQuality", marketData.entryQuality || "—");
+  setText("decisionReason", reason);
 
-  setText(
-    "decisionReason",
-    reason
-  );
+  handleGoodToTradeNotification(decision);
 }
 
 /* =========================================================
@@ -756,60 +639,29 @@ function applyDashboardData(data) {
     market.entryQuality ||
     null;
 
-  const returnedBreakdown =
-    market.scoreBreakdown;
+  marketData.condition =
+    market.condition ||
+    market.status ||
+    null;
 
-  if (
-    returnedBreakdown &&
-    typeof returnedBreakdown === "object"
-  ) {
-    marketData.scoreBreakdown = {
-      trend: toNumberOrNull(returnedBreakdown.trend) ?? 0,
-      adx: toNumberOrNull(returnedBreakdown.adx) ?? 0,
-      rsi: toNumberOrNull(returnedBreakdown.rsi) ?? 0,
-      volatility:
-        toNumberOrNull(returnedBreakdown.volatility) ?? 0,
-      priceVsEma20:
-        toNumberOrNull(returnedBreakdown.priceVsEma20) ?? 0,
-      totalRaw:
-        toNumberOrNull(returnedBreakdown.totalRaw),
-      maxRaw:
-        toNumberOrNull(returnedBreakdown.maxRaw) ?? 100
-    };
-  }
-
-  const newsAvailableValue =
-    market.newsAvailable;
+  marketData.reason =
+    market.reason ||
+    market.description ||
+    null;
 
   const newsRiskValue =
     String(market.newsRisk || "")
       .trim()
       .toUpperCase();
 
-  const hasHighNews =
+  marketData.newsRisk =
     news.some(
       item =>
         String(item.impact || "")
           .toUpperCase() === "HIGH"
-    );
-
-  marketData.newsAvailable =
-    newsAvailableValue === true ||
-    news.length > 0;
-
-  if (hasHighNews || newsRiskValue === "HIGH" || newsRiskValue === "HIGH RISK") {
-    marketData.newsRisk = true;
-  } else if (
-    marketData.newsAvailable &&
-    (
-      newsRiskValue === "LOW" ||
-      newsRiskValue === "LOW RISK"
-    )
-  ) {
-    marketData.newsRisk = false;
-  } else {
-    marketData.newsRisk = null;
-  }
+    ) ||
+    newsRiskValue === "HIGH" ||
+    newsRiskValue === "HIGH RISK";
 
   renderNews(news);
   renderMarketData();
@@ -886,6 +738,106 @@ async function loadDashboardData(endpoint = "/api/market") {
 
     return false;
   }
+}
+
+/* =========================================================
+   GOOD TO TRADE NOTIFICATIONS
+   ========================================================= */
+
+function updateAlertButton() {
+  const button = $("enableAlertsBtn");
+  if (!button) return;
+
+  if (!("Notification" in window)) {
+    button.textContent = "ALERTS UNSUPPORTED";
+    button.disabled = true;
+    return;
+  }
+
+  if (Notification.permission === "granted") {
+    button.textContent = "ALERTS ON";
+    button.classList.add("enabled");
+  } else if (Notification.permission === "denied") {
+    button.textContent = "ALERTS BLOCKED";
+    button.classList.remove("enabled");
+  } else {
+    button.textContent = "ENABLE ALERTS";
+    button.classList.remove("enabled");
+  }
+}
+
+async function requestMarketAlerts() {
+  if (!("Notification" in window)) {
+    updateAlertButton();
+    return;
+  }
+
+  try {
+    const permission = await Notification.requestPermission();
+    updateAlertButton();
+
+    if (permission === "granted") {
+      await showLumoraNotification(
+        "Lumora alerts enabled",
+        "You will be notified when the dashboard changes to GOOD TO TRADE."
+      );
+    }
+  } catch (error) {
+    console.error("Lumora notification permission error:", error);
+  }
+}
+
+async function showLumoraNotification(title, body) {
+  if (!("Notification" in window) || Notification.permission !== "granted") {
+    return;
+  }
+
+  try {
+    if ("serviceWorker" in navigator) {
+      const registration = await navigator.serviceWorker.ready;
+      if (registration && registration.active) {
+        registration.active.postMessage({
+          type: "LUMORA_GOOD_TO_TRADE",
+          body
+        });
+        return;
+      }
+    }
+  } catch (error) {
+    console.warn("Lumora service-worker notification failed:", error);
+  }
+
+  try {
+    new Notification(title, {
+      body,
+      icon: "/icons/icon-192.png",
+      tag: "lumora-good-to-trade"
+    });
+  } catch (error) {
+    console.warn("Lumora browser notification failed:", error);
+  }
+}
+
+function handleGoodToTradeNotification(decision) {
+  const current = String(decision || "").toUpperCase();
+  const previous = localStorage.getItem("lumora:lastDecision") || "";
+
+  if (current === "GOOD TO TRADE" && previous !== "GOOD TO TRADE") {
+    showLumoraNotification(
+      "Lumora — GOOD TO TRADE",
+      marketData.reason || "Market conditions meet the current dashboard criteria."
+    );
+  }
+
+  localStorage.setItem("lumora:lastDecision", current);
+}
+
+function setupAlertButton() {
+  const button = $("enableAlertsBtn");
+  if (!button) return;
+
+  updateAlertButton();
+  button.addEventListener("click", requestMarketAlerts);
 }
 
 /* =========================================================
@@ -1008,6 +960,8 @@ function initDashboard() {
 
   setupInstallButton();
 
+  setupAlertButton();
+
   setupServiceWorker();
 
   /*
@@ -1053,293 +1007,3 @@ if (
 
   initDashboard();
 }
-
-
-/* =========================================================
-   LUMORA PWA INSTALL POPUP
-   ========================================================= */
-
-let lumoraInstallPrompt = null;
-
-const LUMORA_INSTALL_KEY = "lumora_pwa_install_dismissed";
-const LUMORA_INSTALL_VERSION = "v1";
-
-function isStandaloneMode() {
-    return (
-        window.matchMedia("(display-mode: standalone)").matches ||
-        window.navigator.standalone === true
-    );
-}
-
-function isIOSDevice() {
-    return /iphone|ipad|ipod/i.test(navigator.userAgent);
-}
-
-function createLumoraInstallPopup() {
-    if (document.getElementById("lumora-install-popup")) return;
-    if (isStandaloneMode()) return;
-
-    const popup = document.createElement("div");
-    popup.id = "lumora-install-popup";
-
-    popup.innerHTML = `
-        <div class="lumora-install-card">
-
-            <button
-                class="lumora-install-close"
-                id="lumora-install-close"
-                aria-label="Close"
-                type="button"
-            >
-                ×
-            </button>
-
-            <div class="lumora-install-icon">
-                L
-            </div>
-
-            <div class="lumora-install-content">
-
-                <div class="lumora-install-title">
-                    Install Lumora
-                </div>
-
-                <div class="lumora-install-text">
-                    Install Lumora as an app for faster access.
-                </div>
-
-                <div
-                    id="lumora-ios-help"
-                    class="lumora-ios-help"
-                >
-                    On iPhone/iPad, tap
-                    <strong>Share</strong>
-                    and choose
-                    <strong>Add to Home Screen</strong>.
-                </div>
-
-                <div class="lumora-install-actions">
-
-                    <button
-                        id="lumora-install-button"
-                        class="lumora-install-button"
-                        type="button"
-                    >
-                        Install Now
-                    </button>
-
-                    <button
-                        id="lumora-install-later"
-                        class="lumora-install-later"
-                        type="button"
-                    >
-                        Later
-                    </button>
-
-                </div>
-
-            </div>
-        </div>
-    `;
-
-    document.body.appendChild(popup);
-
-    const installButton =
-        document.getElementById("lumora-install-button");
-
-    const laterButton =
-        document.getElementById("lumora-install-later");
-
-    const closeButton =
-        document.getElementById("lumora-install-close");
-
-    const iosHelp =
-        document.getElementById("lumora-ios-help");
-
-    /*
-     * iPhone / iPad
-     */
-    if (isIOSDevice()) {
-        iosHelp.style.display = "block";
-
-        installButton.textContent = "How to Install";
-
-        installButton.addEventListener("click", () => {
-            iosHelp.classList.add("lumora-ios-help-visible");
-        });
-
-    } else {
-        iosHelp.style.display = "none";
-
-        /*
-         * Android / Chrome / Edge / Desktop
-         */
-        installButton.addEventListener("click", async () => {
-
-            if (!lumoraInstallPrompt) {
-                showLumoraInstallHelp();
-                return;
-            }
-
-            lumoraInstallPrompt.prompt();
-
-            const result =
-                await lumoraInstallPrompt.userChoice;
-
-            if (result.outcome === "accepted") {
-                hideLumoraInstallPopup();
-            }
-
-            lumoraInstallPrompt = null;
-        });
-    }
-
-    laterButton.addEventListener(
-        "click",
-        hideLumoraInstallPopup
-    );
-
-    closeButton.addEventListener(
-        "click",
-        hideLumoraInstallPopup
-    );
-}
-
-
-/*
- * Browser gives us the real PWA install prompt.
- */
-window.addEventListener("beforeinstallprompt", (event) => {
-
-    event.preventDefault();
-
-    lumoraInstallPrompt = event;
-
-    setTimeout(() => {
-
-        if (!isStandaloneMode()) {
-            createLumoraInstallPopup();
-        }
-
-    }, 1200);
-});
-
-
-/*
- * User successfully installed Lumora.
- */
-window.addEventListener("appinstalled", () => {
-
-    lumoraInstallPrompt = null;
-
-    hideLumoraInstallPopup();
-
-    console.log("Lumora PWA installed successfully.");
-});
-
-
-function hideLumoraInstallPopup() {
-
-    const popup =
-        document.getElementById("lumora-install-popup");
-
-    if (popup) {
-        popup.classList.add("lumora-install-hidden");
-
-        setTimeout(() => {
-            popup.remove();
-        }, 300);
-    }
-
-    try {
-        localStorage.setItem(
-            LUMORA_INSTALL_KEY,
-            LUMORA_INSTALL_VERSION
-        );
-    } catch (error) {
-        console.warn(
-            "Lumora install preference could not be saved.",
-            error
-        );
-    }
-}
-
-
-/*
- * If browser doesn't expose beforeinstallprompt,
- * show a helpful message instead of doing nothing.
- */
-function showLumoraInstallHelp() {
-
-    const iosHelp =
-        document.getElementById("lumora-ios-help");
-
-    if (!iosHelp) return;
-
-    iosHelp.style.display = "block";
-
-    iosHelp.innerHTML = `
-        <strong>Install Lumora:</strong><br><br>
-
-        <b>Android / Chrome:</b>
-        open the browser menu and choose
-        <b>Install app</b> or
-        <b>Add to Home screen</b>.
-
-        <br><br>
-
-        <b>PC / Chrome:</b>
-        use the install icon in the address bar
-        or Chrome menu → Install Lumora.
-
-        <br><br>
-
-        <b>iPhone / iPad:</b>
-        tap Share → Add to Home Screen.
-    `;
-
-    iosHelp.classList.add(
-        "lumora-ios-help-visible"
-    );
-}
-
-
-/*
- * Automatically show popup if the browser
- * already supports PWA installation.
- */
-document.addEventListener("DOMContentLoaded", () => {
-
-    if (isStandaloneMode()) return;
-
-    /*
-     * Don't show the popup if the user already
-     * dismissed it in this browser.
-     */
-    try {
-
-        const dismissed =
-            localStorage.getItem(LUMORA_INSTALL_KEY);
-
-        if (dismissed === LUMORA_INSTALL_VERSION) {
-            return;
-        }
-
-    } catch (error) {
-        console.warn(
-            "Lumora localStorage unavailable.",
-            error
-        );
-    }
-
-    /*
-     * iOS does not fire beforeinstallprompt.
-     * Therefore show the popup directly.
-     */
-    if (isIOSDevice()) {
-
-        setTimeout(() => {
-            createLumoraInstallPopup();
-        }, 1200);
-    }
-});

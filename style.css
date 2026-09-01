@@ -34,6 +34,37 @@ main {
   font-size: 11px;
 }
 
+
+.top-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.alert-btn {
+  min-height: 32px;
+  padding: 0 11px;
+  border: 1px solid rgba(85,227,154,.30);
+  border-radius: 9px;
+  background: rgba(20,55,45,.35);
+  color: #8ee9ba;
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: .05em;
+  cursor: pointer;
+}
+
+.alert-btn.enabled {
+  background: rgba(40,200,115,.14);
+  border-color: rgba(65,225,140,.55);
+  color: #6ff0aa;
+}
+
+.alert-btn:disabled {
+  opacity: .55;
+  cursor: default;
+}
+
 .live {
   display: flex;
   align-items: center;
@@ -694,6 +725,15 @@ body.state-warn .status-card .big-value {
     grid-template-columns: 1fr;
   }
 
+  /* Phone layout: Market Regime first, Economic Calendar second. */
+  .dashboard-grid .regime-card {
+    order: 1;
+  }
+
+  .dashboard-grid .news-card {
+    order: 2;
+  }
+
   .session-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -713,8 +753,22 @@ body.state-warn .status-card .big-value {
     font-size: 20px;
   }
 
+  .topbar {
+    gap: 10px;
+  }
+
+  .top-actions {
+    gap: 7px;
+  }
+
+  .alert-btn {
+    min-height: 30px;
+    padding: 0 8px;
+    font-size: 8px;
+  }
+
   .live {
-    font-size: 9px;
+    font-size: 8px;
   }
 
   .session-grid,
@@ -1072,277 +1126,4 @@ body.state-warn {
 .decision-card {
   position: relative;
   z-index: 1;
-}
-
-/* =========================================================
-   LUMORA PWA INSTALL POPUP
-   ========================================================= */
-
-#lumora-install-popup {
-    position: fixed;
-    inset: 0;
-    z-index: 999999;
-
-    display: flex;
-    align-items: flex-end;
-    justify-content: center;
-
-    padding: 24px;
-
-    background: rgba(0, 0, 0, 0.35);
-
-    animation: lumoraPopupFadeIn 0.25s ease;
-}
-
-.lumora-install-card {
-    width: min(520px, 100%);
-
-    display: flex;
-    align-items: center;
-    gap: 18px;
-
-    position: relative;
-
-    padding: 22px;
-
-    border: 1px solid rgba(0, 255, 170, 0.25);
-    border-radius: 18px;
-
-    background:
-        linear-gradient(
-            145deg,
-            rgba(13, 27, 31, 0.98),
-            rgba(7, 15, 19, 0.98)
-        );
-
-    box-shadow:
-        0 20px 70px rgba(0, 0, 0, 0.65),
-        0 0 30px rgba(0, 255, 170, 0.08);
-
-    backdrop-filter: blur(16px);
-
-    animation: lumoraPopupSlideUp 0.3s ease;
-}
-
-.lumora-install-icon {
-    flex: 0 0 58px;
-
-    width: 58px;
-    height: 58px;
-
-    display: flex;
-    align-items: center;
-    justify-content: center;
-
-    border-radius: 16px;
-
-    font-size: 30px;
-    font-weight: 900;
-    letter-spacing: 2px;
-
-    color: #07100e;
-
-    background:
-        linear-gradient(
-            135deg,
-            #62f5ad,
-            #20c985
-        );
-
-    box-shadow:
-        0 0 25px rgba(50, 230, 150, 0.25);
-}
-
-.lumora-install-content {
-    flex: 1;
-    min-width: 0;
-}
-
-.lumora-install-title {
-    margin-bottom: 5px;
-
-    font-size: 20px;
-    font-weight: 800;
-
-    color: #f4faf8;
-}
-
-.lumora-install-text {
-    margin-bottom: 14px;
-
-    font-size: 13px;
-    line-height: 1.5;
-
-    color: rgba(220, 235, 232, 0.65);
-}
-
-.lumora-install-actions {
-    display: flex;
-    gap: 9px;
-    align-items: center;
-}
-
-.lumora-install-button {
-    border: 0;
-    border-radius: 9px;
-
-    padding: 10px 17px;
-
-    cursor: pointer;
-
-    font-size: 12px;
-    font-weight: 800;
-    text-transform: uppercase;
-
-    color: #06100d;
-
-    background: #55e7a5;
-
-    transition:
-        transform 0.15s ease,
-        filter 0.15s ease;
-}
-
-.lumora-install-button:hover {
-    transform: translateY(-1px);
-    filter: brightness(1.08);
-}
-
-.lumora-install-later {
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 9px;
-
-    padding: 9px 15px;
-
-    cursor: pointer;
-
-    font-size: 12px;
-    font-weight: 700;
-
-    color: rgba(230, 240, 238, 0.7);
-
-    background: transparent;
-}
-
-.lumora-install-later:hover {
-    background: rgba(255, 255, 255, 0.05);
-}
-
-.lumora-install-close {
-    position: absolute;
-
-    top: 9px;
-    right: 11px;
-
-    width: 28px;
-    height: 28px;
-
-    border: 0;
-    border-radius: 50%;
-
-    cursor: pointer;
-
-    font-size: 21px;
-    line-height: 1;
-
-    color: rgba(255, 255, 255, 0.55);
-
-    background: transparent;
-}
-
-.lumora-install-close:hover {
-    color: white;
-    background: rgba(255, 255, 255, 0.08);
-}
-
-.lumora-ios-help {
-    display: none;
-
-    margin-bottom: 13px;
-    padding: 11px 12px;
-
-    border-radius: 9px;
-
-    font-size: 12px;
-    line-height: 1.55;
-
-    color: rgba(225, 240, 236, 0.75);
-
-    background: rgba(0, 255, 170, 0.05);
-    border: 1px solid rgba(0, 255, 170, 0.12);
-}
-
-.lumora-ios-help-visible {
-    display: block !important;
-}
-
-.lumora-install-hidden {
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.25s ease;
-}
-
-@keyframes lumoraPopupFadeIn {
-    from {
-        opacity: 0;
-    }
-
-    to {
-        opacity: 1;
-    }
-}
-
-@keyframes lumoraPopupSlideUp {
-    from {
-        opacity: 0;
-        transform: translateY(25px);
-    }
-
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-
-/* Mobile */
-
-@media (max-width: 600px) {
-
-    #lumora-install-popup {
-        align-items: flex-end;
-        padding: 12px;
-    }
-
-    .lumora-install-card {
-        gap: 13px;
-        padding: 18px 16px;
-        border-radius: 16px;
-    }
-
-    .lumora-install-icon {
-        flex: 0 0 46px;
-
-        width: 46px;
-        height: 46px;
-
-        border-radius: 12px;
-
-        font-size: 23px;
-    }
-
-    .lumora-install-title {
-        font-size: 17px;
-    }
-
-    .lumora-install-text {
-        font-size: 12px;
-        margin-bottom: 11px;
-    }
-
-    .lumora-install-button,
-    .lumora-install-later {
-        padding: 9px 12px;
-        font-size: 11px;
-    }
 }

@@ -961,117 +961,115 @@ div {
 }
 
 /* =========================================================
-   LUMORA MARKET STATE GLOW
+   LUMORA FINAL MARKET STATE BACKGROUND
    ========================================================= */
 
-/* Neutral / DATA UNAVAILABLE */
-body:not(.state-good):not(.state-bad):not(.state-warn) {
-  background:
-    radial-gradient(
-      circle at 50% 0%,
-      rgba(30, 55, 65, 0.10),
-      transparent 45%
-    ),
-    #05090d !important;
+/* ---------------------------------------------------------
+   BASE / NEUTRAL
+   DATA UNAVAILABLE
+   --------------------------------------------------------- */
+
+html,
+body {
+  background: #05090d !important;
 }
 
-/* 🟢 GOOD TRADE */
+body {
+  transition:
+    background 0.6s ease,
+    box-shadow 0.6s ease;
+
+  min-height: 100vh;
+}
+
+/* ---------------------------------------------------------
+   ⚫ NEUTRAL
+   DATA UNAVAILABLE
+   --------------------------------------------------------- */
+
+body.state-neutral {
+  background:
+    radial-gradient(
+      ellipse at center top,
+      rgba(30, 45, 55, 0.10) 0%,
+      rgba(30, 45, 55, 0.04) 35%,
+      transparent 65%
+    ),
+    #05090d !important;
+
+  box-shadow:
+    inset 0 0 120px rgba(20, 30, 40, 0.05);
+}
+
+/* ---------------------------------------------------------
+   🟢 GOOD TO TRADE
+   --------------------------------------------------------- */
+
 body.state-good {
   background:
     radial-gradient(
-      circle at 50% 0%,
-      rgba(20, 150, 95, 0.14),
-      transparent 45%
+      ellipse at center top,
+      rgba(20, 180, 105, 0.34) 0%,
+      rgba(20, 180, 105, 0.20) 22%,
+      rgba(20, 180, 105, 0.08) 48%,
+      transparent 72%
     ),
     #05090d !important;
+
+  box-shadow:
+    inset 0 0 180px rgba(20, 180, 105, 0.18);
 }
 
-/* 🔴 AVOID TRADE */
+/* ---------------------------------------------------------
+   🔴 AVOID TRADE
+   --------------------------------------------------------- */
+
 body.state-bad {
   background:
     radial-gradient(
-      circle at 50% 0%,
-      rgba(190, 35, 50, 0.14),
-      transparent 45%
+      ellipse at center top,
+      rgba(220, 45, 60, 0.34) 0%,
+      rgba(220, 45, 60, 0.20) 22%,
+      rgba(220, 45, 60, 0.08) 48%,
+      transparent 72%
     ),
     #05090d !important;
+
+  box-shadow:
+    inset 0 0 180px rgba(220, 45, 60, 0.18);
 }
 
-/* 🟡 WARNING / CONDITIONAL */
+/* ---------------------------------------------------------
+   🟡 CONDITIONAL
+   --------------------------------------------------------- */
+
 body.state-warn {
   background:
     radial-gradient(
-      circle at 50% 0%,
-      rgba(190, 145, 30, 0.12),
-      transparent 45%
+      ellipse at center top,
+      rgba(225, 175, 40, 0.34) 0%,
+      rgba(225, 175, 40, 0.20) 22%,
+      rgba(225, 175, 40, 0.08) 48%,
+      transparent 72%
     ),
     #05090d !important;
+
+  box-shadow:
+    inset 0 0 180px rgba(225, 175, 40, 0.18);
 }
 
-/* Keep glass cards above the ambient glow */
+/* ---------------------------------------------------------
+   KEEP GLASS UI ABOVE BACKGROUND
+   --------------------------------------------------------- */
+
 .card,
 .panel,
+.sessions,
 .session-container,
 .news-card,
 .regime-card,
 .trade-filter,
-.sessions {
+.decision-card {
   position: relative;
   z-index: 1;
-}
-
-/* =========================================================
-   LUMORA CONDITION BACKGROUND
-   ========================================================= */
-
-body {
-  transition:
-    background-color 0.6s ease,
-    background 0.6s ease,
-    box-shadow 0.6s ease;
-}
-
-/* 🟢 GOOD TRADE */
-body.state-good {
-  background:
-    radial-gradient(
-      ellipse at center top,
-      rgba(20, 170, 100, 0.30) 0%,
-      rgba(20, 170, 100, 0.16) 28%,
-      rgba(20, 170, 100, 0.06) 52%,
-      #05090d 82%
-    ) !important;
-
-  box-shadow:
-    inset 0 0 180px rgba(20, 170, 100, 0.16);
-}
-
-/* 🔴 AVOID TRADE */
-body.state-bad {
-  background:
-    radial-gradient(
-      ellipse at center top,
-      rgba(210, 40, 55, 0.30) 0%,
-      rgba(210, 40, 55, 0.16) 28%,
-      rgba(210, 40, 55, 0.06) 52%,
-      #05090d 82%
-    ) !important;
-
-  box-shadow:
-    inset 0 0 180px rgba(210, 40, 55, 0.16);
-}
-
-/* 🟡 CONDITIONAL */
-body.state-warn {
-  background:
-    radial-gradient(
-      ellipse at center top,
-      rgba(220, 170, 35, 0.30) 0%,
-      rgba(220, 170, 35, 0.16) 28%,
-      rgba(220, 170, 35, 0.06) 52%,
-      #05090d 82%
-    ) !important;
-
-  box-shadow:
-    inset 0 0 180px rgba(220, 170, 35, 0.16);
 }

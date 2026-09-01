@@ -537,7 +537,7 @@ function renderDecision() {
   setText("entryQuality", marketData.entryQuality || "—");
   setText("decisionReason", reason);
 
-  checkGoodToTradeNotification(decision, reason);
+  checkGoodToTradeNotification(decision, marketData.reason);
 }
 
 /* =========================================================
@@ -819,6 +819,19 @@ async function showLumoraNotification(title, body) {
   }
 }
 
+function handleGoodToTradeNotification(decision) {
+  const current = String(decision || "").toUpperCase();
+  const previous = localStorage.getItem("lumora:lastDecision") || "";
+
+  if (current === "GOOD TO TRADE" && previous !== "GOOD TO TRADE") {
+    showLumoraNotification(
+      "Lumora — GOOD TO TRADE",
+      marketData.reason || "Market conditions meet the current dashboard criteria."
+    );
+  }
+
+  localStorage.setItem("lumora:lastDecision", current);
+}
 
 function setupAlertButton() {
   const button = $("enableAlertsBtn");
@@ -829,50 +842,42 @@ function setupAlertButton() {
 }
 
 /* =========================================================
-   PWA INSTALL + NOTIFICATIONS
+   PWA AUTO INSTALL + NOTIFICATIONS
    ========================================================= */
 
 let deferredInstallPrompt = null;
 let lumoraRegistration = null;
 let lastCondition = null;
+let installPromptShown = false;
 
 /*
-   Capture the native install event immediately.
-   This prevents missing beforeinstallprompt on Chromium.
+   IMPORTANT:
+   Register this listener at script load time, not inside initDashboard().
+   Chromium can fire beforeinstallprompt only once.
 */
 window.addEventListener("beforeinstallprompt", event => {
   event.preventDefault();
   deferredInstallPrompt = event;
 
-  const button = $("installBtn");
-  if (button) {
-    button.hidden = false;
-    button.disabled = false;
-    button.textContent = "INSTALL APP";
-  }
+  console.log("Lumora: native PWA install prompt captured.");
 
-  console.log("Lumora PWA install prompt available.");
+  /*
+     If the custom install popup is already visible, update it
+     immediately so INSTALL NOW will launch the native prompt.
+  */
+  if (installPromptShown) {
+    updateInstallPopupForNative();
+  }
 });
 
 window.addEventListener("appinstalled", () => {
   deferredInstallPrompt = null;
+  installPromptShown = false;
 
-  const button = $("installBtn");
-  if (button) {
-    button.textContent = "INSTALLED";
-    button.disabled = true;
-  }
+  closeInstallGuide();
 
-  console.log("Lumora PWA installed.");
+  console.log("Lumora: PWA installed.");
 });
-
-function setButtonText(id, text, enabled = true) {
-  const button = $(id);
-  if (!button) return;
-
-  button.textContent = text;
-  button.disabled = !enabled;
-}
 
 function isIOSDevice() {
   return /iphone|ipad|ipod/i.test(navigator.userAgent) ||
@@ -886,16 +891,47 @@ function isStandalone() {
   );
 }
 
+function closeInstallGuide() {
+  const modal = $("installGuide");
+  if (modal) modal.hidden = true;
+  installPromptShown = false;
+}
+
+function updateInstallPopupForNative() {
+  const text = $("installGuideText");
+  const steps = $("installGuideSteps");
+  const install = $("installGuideInstall");
+
+  if (!text || !steps || !install) return;
+
+  text.textContent =
+    "Install Lumora as an app for faster access. Your browser supports one-tap installation.";
+
+  steps.innerHTML = `
+    <div><b>Install Lumora</b> directly on this device.</div>
+    <div>Your dashboard will open as an app from your Home Screen / desktop.</div>
+  `;
+
+  install.textContent = "INSTALL NOW";
+  install.disabled = false;
+  install.hidden = false;
+}
+
 function showInstallGuide(type = "browser") {
   const modal = $("installGuide");
   const text = $("installGuideText");
   const steps = $("installGuideSteps");
+  const install = $("installGuideInstall");
 
-  if (!modal || !text || !steps) return;
+  if (!modal || !text || !steps || !install) return;
 
-  if (type === "ios") {
+  installPromptShown = true;
+
+  if (type === "native") {
+    updateInstallPopupForNative();
+  } else if (type === "ios") {
     text.textContent =
-      "On iPhone/iPad, Safari does not provide a JavaScript one-tap install prompt. Add Lumora to your Home Screen from Safari.";
+      "Install Lumora on your iPhone/iPad Home Screen for quick access.";
 
     steps.innerHTML = `
       <div><b>1.</b> Open Lumora in <b>Safari</b>.</div>
@@ -903,89 +939,131 @@ function showInstallGuide(type = "browser") {
       <div><b>3.</b> Choose <b>Add to Home Screen</b>.</div>
       <div><b>4.</b> Tap <b>Add</b>.</div>
     `;
+
+    install.textContent = "HOW TO INSTALL";
+    install.disabled = false;
+    install.hidden = false;
   } else {
+    /*
+       This is only a fallback when Chromium has not exposed the
+       native event. It is NOT shown when deferredInstallPrompt exists.
+    */
     text.textContent =
-      "Your browser did not expose the native install prompt. Use the browser's install option.";
+      "Install Lumora from your browser to use it like a normal app.";
 
     steps.innerHTML = `
-      <div><b>Chrome desktop:</b> click the install icon in the address bar, or use ⋮ → Cast, save, and share → Install page as app.</div>
-      <div><b>Android Chrome:</b> tap ⋮ → Add to Home screen / Install app.</div>
+      <div><b>Chrome desktop:</b> use the install icon in the address bar, or ⋮ → Cast, save, and share → Install page as app.</div>
+      <div><b>Android Chrome:</b> use ⋮ → Add to Home screen / Install app.</div>
       <div><b>Important:</b> use the HTTPS Vercel deployment.</div>
     `;
+
+    install.textContent = "HOW TO INSTALL";
+    install.disabled = false;
+    install.hidden = false;
   }
 
   modal.hidden = false;
 }
 
-function closeInstallGuide() {
-  const modal = $("installGuide");
-  if (modal) modal.hidden = true;
-}
-
-async function installLumora() {
+async function installFromPopup() {
   /*
-     Chromium native PWA installation.
+     Android/desktop Chromium:
+     user gesture comes from clicking INSTALL NOW, so the browser
+     is allowed to display the native install prompt.
   */
   if (deferredInstallPrompt) {
     try {
-      deferredInstallPrompt.prompt();
+      const promptEvent = deferredInstallPrompt;
+      deferredInstallPrompt = null;
 
-      const choice = await deferredInstallPrompt.userChoice;
+      await promptEvent.prompt();
+
+      const choice = await promptEvent.userChoice;
 
       if (choice && choice.outcome === "accepted") {
-        setButtonText("installBtn", "INSTALLING...", false);
+        const button = $("installGuideInstall");
+        if (button) {
+          button.textContent = "INSTALLING...";
+          button.disabled = true;
+        }
       } else {
-        setButtonText("installBtn", "INSTALL APP", true);
+        /*
+           If dismissed, keep the popup closed rather than replacing
+           it with the misleading "native prompt unavailable" message.
+        */
+        closeInstallGuide();
       }
     } catch (error) {
       console.error("Lumora native install error:", error);
-      setButtonText("installBtn", "INSTALL APP", true);
-    } finally {
-      deferredInstallPrompt = null;
+      showInstallGuide("browser");
     }
 
     return;
   }
 
   /*
-     iOS does not expose beforeinstallprompt.
+     iPhone/iPad: Apple does not expose beforeinstallprompt.
+     The correct installation path is Safari Share → Add to Home Screen.
   */
   if (isIOSDevice()) {
-    if (isStandalone()) {
-      setButtonText("installBtn", "INSTALLED", false);
-    } else {
-      showInstallGuide("ios");
-    }
+    showInstallGuide("ios");
     return;
   }
 
   /*
-     Fallback for browsers that support PWA but do not expose
-     the native prompt at this moment.
+     Chromium did not expose a prompt at this moment.
+     This is a browser limitation, not a fake success state.
   */
   showInstallGuide("browser");
 }
 
 function setupInstallButton() {
-  const button = $("installBtn");
-  if (!button) return;
+  /*
+     There is intentionally no header install button now.
+     The install dialog is automatically shown instead.
+  */
+  const modal = $("installGuide");
+  const install = $("installGuideInstall");
+  const later = $("installGuideLater");
 
-  button.hidden = false;
+  if (!modal) return;
 
   document.querySelectorAll("[data-close-install]").forEach(element => {
     element.addEventListener("click", closeInstallGuide);
   });
 
-  const guideDone = $("installGuideDone");
-  if (guideDone) {
-    guideDone.addEventListener("click", closeInstallGuide);
+  if (later) {
+    later.addEventListener("click", closeInstallGuide);
   }
 
-  button.addEventListener("click", installLumora);
+  if (install) {
+    install.addEventListener("click", installFromPopup);
+  }
 
+  /*
+     Do not show an install dialog inside an already-installed PWA.
+  */
   if (isStandalone()) {
-    setButtonText("installBtn", "INSTALLED", false);
+    return;
   }
+
+  /*
+     The popup is automatic — no header button is required.
+     If beforeinstallprompt has already been captured, use it.
+     Otherwise iOS gets its instructions; other browsers get a
+     clear fallback.
+  */
+  setTimeout(() => {
+    if (isStandalone()) return;
+
+    if (deferredInstallPrompt) {
+      showInstallGuide("native");
+    } else if (isIOSDevice()) {
+      showInstallGuide("ios");
+    } else {
+      showInstallGuide("browser");
+    }
+  }, 900);
 }
 
 /* =========================================================
@@ -999,7 +1077,6 @@ function updateAlertButton() {
   if (!("Notification" in window)) {
     button.textContent = "ALERTS UNSUPPORTED";
     button.disabled = true;
-    button.classList.remove("enabled");
     return;
   }
 
@@ -1024,9 +1101,6 @@ async function requestMarketAlerts() {
     return;
   }
 
-  /*
-     On iPhone/iPad the web app should be installed first.
-  */
   if (isIOSDevice() && !isStandalone()) {
     showInstallGuide("ios");
     return;
@@ -1053,7 +1127,6 @@ function setupAlertButton() {
   if (!button) return;
 
   updateAlertButton();
-
   button.addEventListener("click", requestMarketAlerts);
 }
 
@@ -1066,11 +1139,11 @@ async function sendLumoraNotification(title, body) {
       return false;
     }
 
-    let registration = lumoraRegistration;
-
-    if (!registration && "serviceWorker" in navigator) {
-      registration = await navigator.serviceWorker.ready;
-    }
+    const registration =
+      lumoraRegistration ||
+      ("serviceWorker" in navigator
+        ? await navigator.serviceWorker.ready
+        : null);
 
     if (registration && registration.showNotification) {
       await registration.showNotification(title, {
@@ -1100,7 +1173,6 @@ async function sendLumoraNotification(title, body) {
 
 async function checkGoodToTradeNotification(condition, reason) {
   const current = String(condition || "").trim().toUpperCase();
-
   if (!current) return;
 
   const previous = lastCondition;
@@ -1115,10 +1187,6 @@ async function checkGoodToTradeNotification(condition, reason) {
     return;
   }
 
-  /*
-     Notify only when the state changes into GOOD TO TRADE.
-     This prevents notification spam on the 30-second refresh.
-  */
   if (previous === "GOOD TO TRADE") return;
 
   await sendLumoraNotification(
@@ -1131,30 +1199,20 @@ async function checkGoodToTradeNotification(condition, reason) {
    SERVICE WORKER
    ========================================================= */
 
-async function setupServiceWorker() {
+function setupServiceWorker() {
   if (!("serviceWorker" in navigator)) {
     console.warn("Lumora service workers are not supported.");
-    return null;
+    return;
   }
 
-  try {
-    const registration = await navigator.serviceWorker.register(
-      "./sw.js?v=6",
-      { scope: "./" }
-    );
-
-    lumoraRegistration = registration;
-
-    console.log(
-      "Lumora service worker registered:",
-      registration.scope
-    );
-
-    return registration;
-  } catch (error) {
-    console.error("Service worker registration failed:", error);
-    return null;
-  }
+  navigator.serviceWorker.register("./sw.js?v=7", { scope: "./" })
+    .then(registration => {
+      lumoraRegistration = registration;
+      console.log("Lumora service worker registered:", registration.scope);
+    })
+    .catch(error => {
+      console.error("Service worker registration failed:", error);
+    });
 }
 
 /* =========================================================

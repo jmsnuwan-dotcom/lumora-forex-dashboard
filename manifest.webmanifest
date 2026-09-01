@@ -1,26 +1,26 @@
 {
+  "id": "./",
   "name": "Lumora Forex Market Dashboard",
-  "short_name": "Lumora",
-  "description": "Lumora Forex Market Intelligence Dashboard",
+  "short_name": "Lumora Forex",
+  "description": "Lumora XAUUSD market intelligence dashboard.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "orientation": "portrait-primary",
-  "background_color": "#07110f",
-  "theme_color": "#07110f",
-
+  "background_color": "#05090d",
+  "theme_color": "#05090d",
+  "orientation": "any",
   "icons": [
     {
       "src": "./icons/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
       "src": "./icons/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     }
   ]
 }

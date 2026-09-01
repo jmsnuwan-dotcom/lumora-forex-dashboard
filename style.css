@@ -1192,3 +1192,41 @@ body.state-warn {
 .install-guide-steps b{color:#52e9ad}
 .install-guide-done{border:0;border-radius:10px;padding:12px 20px;background:#4ce9aa;color:#06100d;font-weight:800;cursor:pointer}
 @media(max-width:600px){.install-guide-card{padding:24px 18px;border-radius:20px}.install-guide-title{font-size:22px}}
+
+
+.install-guide-actions{
+  display:flex;
+  justify-content:center;
+  gap:10px;
+  margin-top:4px;
+}
+.install-guide-install,
+.install-guide-later{
+  border-radius:10px;
+  padding:12px 20px;
+  font-weight:800;
+  cursor:pointer;
+}
+.install-guide-install{
+  border:0;
+  background:#4ce9aa;
+  color:#06100d;
+}
+.install-guide-install:disabled{
+  opacity:.65;
+  cursor:default;
+}
+.install-guide-later{
+  border:1px solid rgba(160,180,185,.3);
+  background:transparent;
+  color:#dce7e5;
+}
+@media(max-width:600px){
+  .install-guide-actions{
+    width:100%;
+  }
+  .install-guide-install,
+  .install-guide-later{
+    flex:1;
+  }
+}

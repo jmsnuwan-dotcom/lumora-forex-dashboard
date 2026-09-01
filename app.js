@@ -53,11 +53,23 @@ function nowIn(timeZone) {
    ========================================================= */
 
 function isOpen(session) {
-  const d = nowIn(session.tz);
+  /*
+     Session hours are standard FOREX UTC windows.
+     We intentionally calculate from UTC instead of each
+     city's local timezone. This prevents DST/local-time
+     differences from producing the wrong active sessions.
+
+     Sydney:    22:00 -> 07:00 UTC
+     Tokyo:     00:00 -> 09:00 UTC
+     London:    08:00 -> 17:00 UTC
+     New York:  13:00 -> 22:00 UTC
+  */
+
+  const now = new Date();
 
   const minutes =
-    d.getHours() * 60 +
-    d.getMinutes();
+    now.getUTCHours() * 60 +
+    now.getUTCMinutes();
 
   const [start, end] = session.hours
     .split("–")
@@ -65,14 +77,6 @@ function isOpen(session) {
       const [h, m] = value.split(":").map(Number);
       return h * 60 + m;
     });
-
-  /*
-     Normal session:
-     08:00 -> 17:00
-
-     Overnight session:
-     22:00 -> 07:00
-  */
 
   if (start < end) {
     return (
@@ -232,7 +236,7 @@ function renderNews(newsData = []) {
       </div>
     `;
 
-    updateNewsRisk(false);
+    updateNewsRisk("UNKNOWN");
     return;
   }
 
@@ -307,19 +311,25 @@ function renderNews(newsData = []) {
    NEWS RISK
    ========================================================= */
 
-function updateNewsRisk(highImpact) {
+function updateNewsRisk(status) {
   const risk = $("newsRisk");
 
   if (!risk) {
     return;
   }
 
-  if (highImpact) {
+  const normalized =
+    String(status || "UNKNOWN").toUpperCase();
+
+  if (normalized === "HIGH") {
     risk.textContent = "HIGH IMPACT";
     risk.className = "badge warn";
-  } else {
+  } else if (normalized === "LOW") {
     risk.textContent = "LOW RISK";
     risk.className = "badge ok";
+  } else {
+    risk.textContent = "NOT VERIFIED";
+    risk.className = "badge warn";
   }
 }
 
@@ -356,8 +366,19 @@ const marketData = {
   volatility: null,
   ema: null,
 
-  newsRisk: false,
-  entryQuality: null
+  newsRisk: null,
+  newsAvailable: false,
+  entryQuality: null,
+
+  scoreBreakdown: {
+    trend: 0,
+    adx: 0,
+    rsi: 0,
+    volatility: 0,
+    priceVsEma20: 0,
+    totalRaw: null,
+    maxRaw: 100
+  }
 };
 
 /* =========================================================
@@ -378,10 +399,22 @@ function renderMarketData() {
     marketData.name || "DATA UNAVAILABLE"
   );
 
+  const baseRegimeText =
+    marketData.text ||
+    "Live market analysis data is not connected.";
+
+  const b = marketData.scoreBreakdown;
+
+  const breakdownText =
+    Number.isFinite(b.totalRaw)
+      ? `Score: Trend +${b.trend} | ADX +${b.adx} | RSI +${b.rsi} | Volatility +${b.volatility} | EMA +${b.priceVsEma20}`
+      : "";
+
   setText(
     "regimeText",
-    marketData.text ||
-      "Live market analysis data is not connected."
+    breakdownText
+      ? `${baseRegimeText} ${breakdownText}`
+      : baseRegimeText
   );
 
   setText(
@@ -420,19 +453,27 @@ function renderMarketData() {
       : "—"
   );
 
+  const b = marketData.scoreBreakdown;
+
   setText(
     "scoreTrend",
-    "—"
+    Number.isFinite(b.totalRaw)
+      ? `Trend +${b.trend}`
+      : "—"
   );
 
   setText(
     "scoreMomentum",
-    "—"
+    Number.isFinite(b.totalRaw)
+      ? `ADX +${b.adx} | RSI +${b.rsi}`
+      : "—"
   );
 
   setText(
     "scoreNews",
-    "—"
+    Number.isFinite(b.totalRaw)
+      ? `Volatility +${b.volatility} | EMA +${b.priceVsEma20}`
+      : "—"
   );
 }
 
@@ -488,7 +529,11 @@ function renderDecision() {
   } else {
 
     const highImpact =
-      marketData.newsRisk;
+      marketData.newsRisk === true;
+
+    const newsVerified =
+      marketData.newsAvailable === true &&
+      marketData.newsRisk !== null;
 
     const score =
       Number(marketData.score);
@@ -507,6 +552,18 @@ function renderDecision() {
 
       reason =
         "High-impact news risk detected. Avoid fresh entries around major releases.";
+
+    } else if (
+      !newsVerified
+    ) {
+
+      state = "warn";
+
+      decision =
+        "CONDITIONAL";
+
+      reason =
+        "Technical conditions are available, but live economic-calendar risk is not verified.";
 
     } else if (
       sessionOpen &&
@@ -574,9 +631,11 @@ function renderDecision() {
     "dNews",
     marketData.available
       ? (
-          marketData.newsRisk
+          marketData.newsRisk === true
             ? "HIGH RISK"
-            : "LOW"
+            : marketData.newsRisk === false
+              ? "LOW"
+              : "UNKNOWN"
         )
       : "—"
   );
@@ -699,19 +758,60 @@ function applyDashboardData(data) {
     market.entryQuality ||
     null;
 
+  const returnedBreakdown =
+    market.scoreBreakdown;
+
+  if (
+    returnedBreakdown &&
+    typeof returnedBreakdown === "object"
+  ) {
+    marketData.scoreBreakdown = {
+      trend: toNumberOrNull(returnedBreakdown.trend) ?? 0,
+      adx: toNumberOrNull(returnedBreakdown.adx) ?? 0,
+      rsi: toNumberOrNull(returnedBreakdown.rsi) ?? 0,
+      volatility:
+        toNumberOrNull(returnedBreakdown.volatility) ?? 0,
+      priceVsEma20:
+        toNumberOrNull(returnedBreakdown.priceVsEma20) ?? 0,
+      totalRaw:
+        toNumberOrNull(returnedBreakdown.totalRaw),
+      maxRaw:
+        toNumberOrNull(returnedBreakdown.maxRaw) ?? 100
+    };
+  }
+
+  const newsAvailableValue =
+    market.newsAvailable;
+
   const newsRiskValue =
     String(market.newsRisk || "")
       .trim()
       .toUpperCase();
 
-  marketData.newsRisk =
+  const hasHighNews =
     news.some(
       item =>
         String(item.impact || "")
           .toUpperCase() === "HIGH"
-    ) ||
-    newsRiskValue === "HIGH" ||
-    newsRiskValue === "HIGH RISK";
+    );
+
+  marketData.newsAvailable =
+    newsAvailableValue === true ||
+    news.length > 0;
+
+  if (hasHighNews || newsRiskValue === "HIGH" || newsRiskValue === "HIGH RISK") {
+    marketData.newsRisk = true;
+  } else if (
+    marketData.newsAvailable &&
+    (
+      newsRiskValue === "LOW" ||
+      newsRiskValue === "LOW RISK"
+    )
+  ) {
+    marketData.newsRisk = false;
+  } else {
+    marketData.newsRisk = null;
+  }
 
   renderNews(news);
   renderMarketData();

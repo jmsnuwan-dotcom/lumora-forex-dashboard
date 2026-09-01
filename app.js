@@ -487,7 +487,7 @@ function renderDecision() {
 
   if (!marketData.available) {
 
-    state = "warn";
+    state = "neutral";
 
     decision =
       "DATA UNAVAILABLE";

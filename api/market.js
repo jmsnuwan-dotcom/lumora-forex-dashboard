@@ -23,9 +23,9 @@ export default async function handler(req, res) {
     const interval =
       process.env.LUMORA_INTERVAL || DEFAULT_INTERVAL;
 
-    // --------------------------------------------------------
-    // LIVE OHLC DATA
-    // --------------------------------------------------------
+    // ==========================================================
+    // TWELVE DATA — M1 OHLC
+    // ==========================================================
 
     const url =
       "https://api.twelvedata.com/time_series" +
@@ -34,7 +34,11 @@ export default async function handler(req, res) {
       "&outputsize=250" +
       `&apikey=${encodeURIComponent(apiKey)}`;
 
-    const response = await fetch(url);
+    const response = await fetch(url, {
+      headers: {
+        Accept: "application/json"
+      }
+    });
 
     if (!response.ok) {
       throw new Error(
@@ -46,19 +50,21 @@ export default async function handler(req, res) {
 
     if (!Array.isArray(json.values)) {
       throw new Error(
-        json.message || "Market candle data unavailable"
+        json.message ||
+        "Market candle data unavailable"
       );
     }
 
-    if (json.values.length < 60) {
+    // EMA 200 requires enough candles.
+    if (json.values.length < 210) {
       throw new Error(
-        "Not enough candles for market analysis"
+        `Not enough candles for EMA200 analysis: ${json.values.length}`
       );
     }
 
-    // --------------------------------------------------------
+    // ==========================================================
     // NORMALIZE CANDLES
-    // --------------------------------------------------------
+    // ==========================================================
 
     const candles = json.values
       .map(item => ({
@@ -77,12 +83,18 @@ export default async function handler(req, res) {
       )
       .reverse();
 
-    const closes =
-      candles.map(c => c.close);
+    if (candles.length < 210) {
+      throw new Error(
+        `Not enough valid candles: ${candles.length}`
+      );
+    }
 
-    // --------------------------------------------------------
+    const closes =
+      candles.map(candle => candle.close);
+
+    // ==========================================================
     // INDICATORS
-    // --------------------------------------------------------
+    // ==========================================================
 
     const ema20 =
       ema(closes, 20);
@@ -103,29 +115,29 @@ export default async function handler(req, res) {
       adx(candles, 14);
 
     const price =
-      closes[closes.length - 1];
+      last(closes);
 
     const e20 =
-      ema20[ema20.length - 1];
+      last(ema20);
 
     const e50 =
-      ema50[ema50.length - 1];
+      last(ema50);
 
     const e200 =
-      ema200[ema200.length - 1];
+      last(ema200);
 
     const currentRSI =
-      rsi14[rsi14.length - 1];
+      last(rsi14);
 
     const currentATR =
-      atr14[atr14.length - 1];
+      last(atr14);
 
     const currentADX =
-      adx14[adx14.length - 1];
+      last(adx14);
 
-    // --------------------------------------------------------
+    // ==========================================================
     // TREND
-    // --------------------------------------------------------
+    // ==========================================================
 
     let trend = "MIXED";
 
@@ -149,12 +161,11 @@ export default async function handler(req, res) {
       }
     }
 
-    // --------------------------------------------------------
+    // ==========================================================
     // EMA STRUCTURE
-    // --------------------------------------------------------
+    // ==========================================================
 
-    let emaStructure =
-      "MIXED";
+    let emaStructure = "MIXED";
 
     if (trend === "BUY") {
       emaStructure =
@@ -166,36 +177,15 @@ export default async function handler(req, res) {
         "BEARISH (20 < 50 < 200)";
     }
 
-    // --------------------------------------------------------
+    // ==========================================================
     // VOLATILITY
-    // --------------------------------------------------------
-
-    const returns = [];
-
-    for (
-      let i = Math.max(1, closes.length - 30);
-      i < closes.length;
-      i++
-    ) {
-      if (closes[i - 1] === 0) {
-        continue;
-      }
-
-      returns.push(
-        (closes[i] - closes[i - 1]) /
-        closes[i - 1]
-      );
-    }
+    // ==========================================================
 
     const volatilityValue =
-      Math.sqrt(
-        returns.reduce(
-          (sum, value) =>
-            sum + value * value,
-          0
-        ) /
-        Math.max(1, returns.length)
-      ) * 100;
+      realizedVolatility(
+        closes,
+        30
+      );
 
     let volatility =
       "NORMAL";
@@ -208,9 +198,9 @@ export default async function handler(req, res) {
       volatility = "HIGH";
     }
 
-    // --------------------------------------------------------
+    // ==========================================================
     // MARKET SCORE
-    // --------------------------------------------------------
+    // ==========================================================
 
     let score = 0;
 
@@ -273,16 +263,16 @@ export default async function handler(req, res) {
     // Price vs EMA20
     if (
       Number.isFinite(e20) &&
-      price > e20 &&
-      trend === "BUY"
-    ) {
-      score += 15;
-    }
-
-    else if (
-      Number.isFinite(e20) &&
-      price < e20 &&
-      trend === "SELL"
+      (
+        (
+          trend === "BUY" &&
+          price > e20
+        ) ||
+        (
+          trend === "SELL" &&
+          price < e20
+        )
+      )
     ) {
       score += 15;
     }
@@ -292,17 +282,15 @@ export default async function handler(req, res) {
     }
 
     score =
-      Math.max(
+      clamp(
+        Math.round(score),
         0,
-        Math.min(
-          100,
-          Math.round(score)
-        )
+        100
       );
 
-    // --------------------------------------------------------
-    // SESSION
-    // --------------------------------------------------------
+    // ==========================================================
+    // FOREX SESSION
+    // ==========================================================
 
     const session =
       getCurrentSessions();
@@ -310,31 +298,32 @@ export default async function handler(req, res) {
     const sessionOpen =
       session.length > 0;
 
-    // --------------------------------------------------------
-    // NEWS
-    // --------------------------------------------------------
+    // ==========================================================
+    // ECONOMIC CALENDAR
+    // ==========================================================
     //
     // IMPORTANT:
-    // Economic calendar is NOT connected yet.
+    // We do NOT invent news data.
     //
-    // Therefore Lumora will NOT claim
-    // GOOD TO TRADE until news data is verified.
+    // Until a verified economic-calendar API is connected,
+    // news state remains UNKNOWN.
     //
 
     const newsAvailable = false;
 
-    const newsRisk =
-      "UNKNOWN";
+    const newsRisk = "UNKNOWN";
 
-    // --------------------------------------------------------
-    // FINAL CONDITION
-    // --------------------------------------------------------
+    const news = [];
+
+    // ==========================================================
+    // FINAL MARKET CONDITION
+    // ==========================================================
 
     let condition =
       "CONDITIONAL";
 
     let reason =
-      "Technical market data is available, but economic-calendar risk is not verified.";
+      "Technical conditions are available, but live economic-calendar risk is not verified.";
 
     // No major session
     if (!sessionOpen) {
@@ -369,7 +358,7 @@ export default async function handler(req, res) {
         "Volatility is high while market structure is not strong enough.";
     }
 
-    // News not verified
+    // News unavailable
     else if (!newsAvailable) {
 
       condition =
@@ -389,9 +378,9 @@ export default async function handler(req, res) {
         "Trend, momentum, volatility, session and news conditions are aligned.";
     }
 
-    // --------------------------------------------------------
+    // ==========================================================
     // ENTRY QUALITY
-    // --------------------------------------------------------
+    // ==========================================================
 
     let entryQuality =
       "WEAK";
@@ -404,9 +393,9 @@ export default async function handler(req, res) {
       entryQuality = "CONDITIONAL";
     }
 
-    // --------------------------------------------------------
+    // ==========================================================
     // RESPONSE
-    // --------------------------------------------------------
+    // ==========================================================
 
     return res.status(200).json({
 
@@ -448,7 +437,7 @@ export default async function handler(req, res) {
 
       newsRisk,
 
-      news: [],
+      news,
 
       session,
 
@@ -470,7 +459,9 @@ export default async function handler(req, res) {
       available: false,
 
       error:
-        "Live market data temporarily unavailable"
+        error instanceof Error
+          ? error.message
+          : "Live market data temporarily unavailable"
     });
   }
 }
@@ -528,7 +519,7 @@ function ema(values, period) {
 
 
 // ============================================================
-// RSI
+// RSI — Wilder RSI
 // ============================================================
 
 function rsi(values, period) {
@@ -647,6 +638,7 @@ function atr(candles, period) {
       (candle, index) => {
 
         if (index === 0) {
+
           return (
             candle.high -
             candle.low
@@ -675,7 +667,7 @@ function atr(candles, period) {
       }
     );
 
-  return ema(
+  return wilderAverage(
     trueRanges,
     period
   );
@@ -683,42 +675,61 @@ function atr(candles, period) {
 
 
 // ============================================================
-// ADX
+// ADX — Correct Wilder ADX
 // ============================================================
+//
+// IMPORTANT FIX:
+//
+// The old implementation returned the Wilder SUM
+// as the final ADX value.
+//
+// Example:
+//
+// Real ADX ≈ 46.76
+//
+// Old result:
+//
+// 46.76 × 14 ≈ 654.64
+//
+// That is why the dashboard showed:
+//
+// ADX = 654.63
+//
+// This implementation calculates:
+//
+// +DM
+// -DM
+// TR
+// +DI
+// -DI
+// DX
+// ADX
+//
+// and returns ADX on the normal 0–100 scale.
+//
 
 function adx(candles, period) {
 
-  if (
-    candles.length <
-    period * 2 + 2
-  ) {
-    return new Array(
-      candles.length
-    ).fill(null);
-  }
+  const length =
+    candles.length;
 
-  const trueRanges = [];
-  const plusDM = [];
-  const minusDM = [];
+  const trueRanges =
+    new Array(length)
+      .fill(0);
+
+  const plusDM =
+    new Array(length)
+      .fill(0);
+
+  const minusDM =
+    new Array(length)
+      .fill(0);
 
   for (
-    let i = 0;
-    i < candles.length;
+    let i = 1;
+    i < length;
     i++
   ) {
-
-    if (i === 0) {
-
-      trueRanges.push(
-        candles[i].high -
-        candles[i].low
-      );
-
-      plusDM.push(0);
-      minusDM.push(0);
-
-      continue;
-    }
 
     const current =
       candles[i];
@@ -734,21 +745,7 @@ function adx(candles, period) {
       previous.low -
       current.low;
 
-    plusDM.push(
-      upMove > downMove &&
-      upMove > 0
-        ? upMove
-        : 0
-    );
-
-    minusDM.push(
-      downMove > upMove &&
-      downMove > 0
-        ? downMove
-        : 0
-    );
-
-    trueRanges.push(
+    trueRanges[i] =
       Math.max(
 
         current.high -
@@ -763,55 +760,78 @@ function adx(candles, period) {
           current.low -
           previous.close
         )
+      );
+
+    plusDM[i] =
+      (
+        upMove >
+        downMove &&
+        upMove > 0
       )
-    );
+        ? upMove
+        : 0;
+
+    minusDM[i] =
+      (
+        downMove >
+        upMove &&
+        downMove > 0
+      )
+        ? downMove
+        : 0;
   }
 
-  const atrValues =
-    wilder(
+  // Wilder sums
+  const atrSum =
+    wilderSum(
       trueRanges,
       period
     );
 
-  const plusValues =
-    wilder(
+  const plusDMSum =
+    wilderSum(
       plusDM,
       period
     );
 
-  const minusValues =
-    wilder(
+  const minusDMSum =
+    wilderSum(
       minusDM,
       period
     );
 
   const dx =
-    new Array(
-      candles.length
-    ).fill(null);
+    new Array(length)
+      .fill(null);
+
+  // ==========================================================
+  // DI + DX
+  // ==========================================================
 
   for (
     let i = 0;
-    i < candles.length;
+    i < length;
     i++
   ) {
 
     if (
-      !atrValues[i] ||
-      atrValues[i] === 0
+      !Number.isFinite(
+        atrSum[i]
+      ) ||
+      atrSum[i] <= 0
     ) {
       continue;
     }
 
     const plusDI =
       100 *
-      plusValues[i] /
-      atrValues[i];
+      plusDMSum[i] /
+      atrSum[i];
 
     const minusDI =
       100 *
-      minusValues[i] /
-      atrValues[i];
+      minusDMSum[i] /
+      atrSum[i];
 
     const total =
       plusDI +
@@ -829,21 +849,96 @@ function adx(candles, period) {
     }
   }
 
-  return wilder(
-    dx.map(
-      value =>
-        value ?? 0
-    ),
-    period
-  );
+  // ==========================================================
+  // FINAL ADX
+  // ==========================================================
+  //
+  // IMPORTANT:
+  //
+  // ADX is the Wilder average of DX.
+  //
+  // NOT the SUM.
+  //
+
+  const adxOutput =
+    new Array(length)
+      .fill(null);
+
+  const validDX = [];
+
+  for (
+    let i = 0;
+    i < length;
+    i++
+  ) {
+
+    if (
+      Number.isFinite(dx[i])
+    ) {
+
+      validDX.push({
+        index: i,
+        value: dx[i]
+      });
+    }
+  }
+
+  if (
+    validDX.length < period
+  ) {
+    return adxOutput;
+  }
+
+  let initialSum = 0;
+
+  for (
+    let i = 0;
+    i < period;
+    i++
+  ) {
+
+    initialSum +=
+      validDX[i].value;
+  }
+
+  let currentADX =
+    initialSum /
+    period;
+
+  adxOutput[
+    validDX[period - 1].index
+  ] =
+    currentADX;
+
+  for (
+    let i = period;
+    i < validDX.length;
+    i++
+  ) {
+
+    currentADX =
+      (
+        currentADX *
+        (period - 1) +
+        validDX[i].value
+      ) /
+      period;
+
+    adxOutput[
+      validDX[i].index
+    ] =
+      currentADX;
+  }
+
+  return adxOutput;
 }
 
 
 // ============================================================
-// WILDER SMOOTHING
+// WILDER SUM
 // ============================================================
 
-function wilder(
+function wilderSum(
   values,
   period
 ) {
@@ -865,6 +960,7 @@ function wilder(
     i < period;
     i++
   ) {
+
     value +=
       values[i] || 0;
   }
@@ -892,7 +988,93 @@ function wilder(
 
 
 // ============================================================
-// FOREX SESSION
+// WILDER AVERAGE
+// ============================================================
+
+function wilderAverage(
+  values,
+  period
+) {
+
+  const sums =
+    wilderSum(
+      values,
+      period
+    );
+
+  return sums.map(
+    value =>
+      value === null
+        ? null
+        : value / period
+  );
+}
+
+
+// ============================================================
+// REALIZED VOLATILITY
+// ============================================================
+
+function realizedVolatility(
+  closes,
+  lookback
+) {
+
+  const returns = [];
+
+  for (
+    let i =
+      Math.max(
+        1,
+        closes.length -
+        lookback
+      );
+
+    i < closes.length;
+
+    i++
+  ) {
+
+    if (
+      closes[i - 1] === 0
+    ) {
+      continue;
+    }
+
+    returns.push(
+      (
+        closes[i] -
+        closes[i - 1]
+      ) /
+      closes[i - 1]
+    );
+  }
+
+  if (
+    returns.length === 0
+  ) {
+    return 0;
+  }
+
+  return (
+    Math.sqrt(
+      returns.reduce(
+        (
+          sum,
+          value
+        ) =>
+          sum +
+          value * value,
+        0
+      ) /
+      returns.length
+    ) * 100
+  );
+}
+
+
+// ============================================================
+// CURRENT FOREX SESSIONS
 // ============================================================
 
 function getCurrentSessions() {
@@ -905,32 +1087,44 @@ function getCurrentSessions() {
     [
       "Sydney",
       "Australia/Sydney",
-      "22:00–07:00"
+      22 * 60,
+      7 * 60
     ],
 
     [
       "Tokyo",
       "Asia/Tokyo",
-      "00:00–09:00"
+      0,
+      9 * 60
     ],
 
     [
       "London",
       "Europe/London",
-      "08:00–17:00"
+      8 * 60,
+      17 * 60
     ],
 
     [
       "New York",
       "America/New_York",
-      "13:00–22:00"
+      13 * 60,
+      22 * 60
     ]
 
   ];
 
   return sessions
+
     .filter(
-      ([, timeZone, hours]) => {
+      (
+        [
+          ,
+          timeZone,
+          start,
+          end
+        ]
+      ) => {
 
         const date =
           new Date(
@@ -947,35 +1141,23 @@ function getCurrentSessions() {
           60 +
           date.getMinutes();
 
-        const [
-          start,
-          end
-        ] =
-          hours
-            .split("–")
-            .map(value => {
+        if (
+          start < end
+        ) {
 
-              const [
-                hour,
-                minute
-              ] =
-                value
-                  .split(":")
-                  .map(Number);
-
-              return (
-                hour * 60 +
-                minute
-              );
-            });
-
-        return start < end
-          ? minutes >= start &&
+          return (
+            minutes >= start &&
             minutes < end
-          : minutes >= start ||
-            minutes < end;
+          );
+        }
+
+        return (
+          minutes >= start ||
+          minutes < end
+        );
       }
     )
+
     .map(
       ([name]) =>
         name
@@ -984,8 +1166,40 @@ function getCurrentSessions() {
 
 
 // ============================================================
-// NUMBER
+// HELPERS
 // ============================================================
+
+function finite(...values) {
+
+  return values.every(
+    Number.isFinite
+  );
+}
+
+
+function last(values) {
+
+  return values[
+    values.length - 1
+  ];
+}
+
+
+function clamp(
+  value,
+  min,
+  max
+) {
+
+  return Math.max(
+    min,
+    Math.min(
+      max,
+      value
+    )
+  );
+}
+
 
 function round(value) {
 

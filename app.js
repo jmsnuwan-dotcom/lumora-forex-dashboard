@@ -856,6 +856,37 @@ function setButtonText(id, text, enabled = true) {
   button.disabled = !enabled;
 }
 
+function showInstallGuide(type = "browser") {
+  const modal = $("installGuide");
+  const text = $("installGuideText");
+  const steps = $("installGuideSteps");
+  if (!modal || !text || !steps) return;
+
+  if (type === "ios") {
+    text.textContent = "On iPhone/iPad, iOS does not allow a website button to directly install the app. Use Safari's Share menu once, then Lumora will appear on your Home Screen.";
+    steps.innerHTML = `
+      <div><b>1.</b> Open Lumora in <b>Safari</b>.</div>
+      <div><b>2.</b> Tap the <b>Share</b> button.</div>
+      <div><b>3.</b> Choose <b>Add to Home Screen</b>.</div>
+      <div><b>4.</b> Tap <b>Add</b>.</div>
+    `;
+  } else {
+    text.textContent = "Your browser did not provide the one-tap install prompt. You can still install Lumora from the browser menu.";
+    steps.innerHTML = `
+      <div><b>Chrome desktop:</b> use the Install icon in the address bar or ⋮ → Cast, save, and share → Install page as app.</div>
+      <div><b>Android Chrome:</b> tap ⋮ → Add to Home screen / Install app.</div>
+      <div><b>Important:</b> use the HTTPS Vercel site.</div>
+    `;
+  }
+
+  modal.hidden = false;
+}
+
+function closeInstallGuide() {
+  const modal = $("installGuide");
+  if (modal) modal.hidden = true;
+}
+
 function setupInstallButton() {
   const button = $("installBtn");
   if (!button) return;
@@ -863,6 +894,12 @@ function setupInstallButton() {
   // Always show the button. Some browsers do not fire
   // beforeinstallprompt, especially iOS/Safari.
   button.hidden = false;
+
+  document.querySelectorAll("[data-close-install]").forEach(element => {
+    element.addEventListener("click", closeInstallGuide);
+  });
+  const guideDone = $("installGuideDone");
+  if (guideDone) guideDone.addEventListener("click", closeInstallGuide);
 
   window.addEventListener("beforeinstallprompt", event => {
     event.preventDefault();
@@ -886,13 +923,17 @@ function setupInstallButton() {
       return;
     }
 
-    // Fallback instructions when the browser has no install prompt.
+    // iPhone/iPad does not expose a JavaScript install prompt.
+    // Show an in-app guide instead of a browser alert.
     const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
     if (isIOS) {
-      alert("To install Lumora on iPhone/iPad:\n\n1. Tap Share in Safari.\n2. Choose 'Add to Home Screen'.\n3. Tap Add.");
-    } else {
-      alert("If the browser does not show the install popup:\n\nOpen the browser menu (⋮) and choose 'Install app' or 'Add to Home screen'.\n\nMake sure you are using the HTTPS Vercel/GitHub deployed site.");
+      showInstallGuide("ios");
+      return;
     }
+
+    // Chromium may hide beforeinstallprompt in some situations.
+    // Give the user a clear in-app guide rather than a browser alert.
+    showInstallGuide("browser");
   });
 
   window.addEventListener("appinstalled", () => {

@@ -1176,3 +1176,19 @@ body.state-warn {
     font-size: 8px;
   }
 }
+
+/* =========================================================
+   PWA INSTALL GUIDE
+   ========================================================= */
+.install-guide[hidden]{display:none!important}
+.install-guide{position:fixed;inset:0;z-index:9999;display:grid;place-items:center;padding:20px}
+.install-guide-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.72);backdrop-filter:blur(6px)}
+.install-guide-card{position:relative;width:min(460px,100%);padding:28px;border:1px solid rgba(77,239,170,.45);border-radius:22px;background:#081316;box-shadow:0 24px 80px rgba(0,0,0,.55);text-align:center}
+.install-guide-close{position:absolute;top:10px;right:14px;border:0;background:transparent;color:#9aa8ad;font-size:30px;cursor:pointer}
+.install-guide-icon{width:54px;height:54px;margin:0 auto 14px;border-radius:14px;display:grid;place-items:center;background:#46e6a5;color:#06100d;font-size:28px;font-weight:900}
+.install-guide-title{font-size:24px;font-weight:800;color:#f2f7f5;margin-bottom:8px}
+.install-guide-text{color:#aebbbf;line-height:1.5;margin-bottom:16px}
+.install-guide-steps{text-align:left;color:#e6efed;line-height:1.65;background:#0b1d20;border:1px solid rgba(77,239,170,.16);border-radius:14px;padding:15px 18px;margin-bottom:18px}
+.install-guide-steps b{color:#52e9ad}
+.install-guide-done{border:0;border-radius:10px;padding:12px 20px;background:#4ce9aa;color:#06100d;font-weight:800;cursor:pointer}
+@media(max-width:600px){.install-guide-card{padding:24px 18px;border-radius:20px}.install-guide-title{font-size:22px}}

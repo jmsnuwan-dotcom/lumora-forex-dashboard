@@ -740,3 +740,222 @@ body.state-warn .status-card .big-value {
     grid-column: 2;
   }
 }
+
+
+/* =========================================================
+   LUMORA FINAL BODY / SCALE OVERRIDE
+   ========================================================= */
+
+html {
+  background: #05090d !important;
+}
+
+body {
+  margin: 0 !important;
+  padding: 0 !important;
+
+  min-width: 100% !important;
+  min-height: 100vh !important;
+
+  background:
+    radial-gradient(
+      circle at 20% 10%,
+      rgba(20, 90, 85, 0.10),
+      transparent 35%
+    ),
+    radial-gradient(
+      circle at 85% 20%,
+      rgba(20, 65, 80, 0.08),
+      transparent 35%
+    ),
+    #05090d !important;
+
+  color: #eaf3f5 !important;
+
+  font-family:
+    Inter,
+    "Segoe UI",
+    Arial,
+    sans-serif !important;
+
+  font-size: 14px !important;
+
+  overflow-x: hidden;
+}
+
+/* Force all dashboard text to use modern font */
+
+body,
+body * {
+  font-family:
+    Inter,
+    "Segoe UI",
+    Arial,
+    sans-serif !important;
+}
+
+/* Make main dashboard wider */
+
+main {
+  width: min(1380px, calc(100% - 56px)) !important;
+  margin: 0 auto !important;
+
+  padding: 28px 0 60px !important;
+}
+
+/* Header */
+
+.topbar {
+  width: 100% !important;
+
+  box-sizing: border-box;
+
+  min-height: 78px !important;
+
+  padding:
+    18px
+    max(28px, calc((100% - 1380px) / 2))
+    !important;
+
+  background:
+    rgba(4, 10, 15, 0.88) !important;
+
+  border-bottom:
+    1px solid rgba(110, 160, 175, 0.12) !important;
+
+  backdrop-filter: blur(20px);
+}
+
+/* Bigger brand */
+
+.brand {
+  font-size: 27px !important;
+  font-weight: 900 !important;
+
+  letter-spacing: .18em !important;
+
+  color: #f2f8fa !important;
+}
+
+.subtitle {
+  font-size: 11px !important;
+}
+
+/* Bigger top cards */
+
+.hero-grid .card {
+  min-height: 165px !important;
+  padding: 27px !important;
+}
+
+.clock {
+  font-size: 42px !important;
+}
+
+.big-value {
+  font-size: 38px !important;
+}
+
+/* Sessions */
+
+.sessions {
+  padding: 23px !important;
+}
+
+.session {
+  min-height: 95px !important;
+  padding: 17px !important;
+}
+
+.session-name {
+  font-size: 15px !important;
+}
+
+.session-time {
+  font-size: 10px !important;
+}
+
+.session-state {
+  font-size: 10px !important;
+}
+
+/* Main panels */
+
+.news-card,
+.regime-card {
+  min-height: 360px !important;
+  padding: 25px !important;
+}
+
+.card-head h2 {
+  font-size: 22px !important;
+}
+
+/* News */
+
+.news {
+  min-height: 64px !important;
+  padding: 12px 14px !important;
+}
+
+.news-title {
+  font-size: 13px !important;
+}
+
+.news-meta {
+  font-size: 10px !important;
+}
+
+.news > b {
+  font-size: 13px !important;
+}
+
+/* Regime */
+
+.regime-name {
+  font-size: 21px !important;
+}
+
+.regime-text {
+  font-size: 11px !important;
+}
+
+.score-ring {
+  width: 88px !important;
+  height: 88px !important;
+
+  font-size: 23px !important;
+}
+
+.metrics > div {
+  min-height: 65px !important;
+  padding: 12px 14px !important;
+}
+
+.metrics b {
+  font-size: 12px !important;
+}
+
+/* Decision */
+
+.decision-card {
+  padding: 25px !important;
+}
+
+.decision-grid > div {
+  min-height: 78px !important;
+}
+
+.decision-grid b {
+  font-size: 12px !important;
+}
+
+/* Remove accidental browser-looking white areas */
+
+header,
+main,
+section,
+article,
+div {
+  box-sizing: border-box;
+}

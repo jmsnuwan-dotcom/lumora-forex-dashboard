@@ -1,10 +1,270 @@
-const sessions=[{name:'Sydney',tz:'Australia/Sydney',hours:'22:00–07:00'},{name:'Tokyo',tz:'Asia/Tokyo',hours:'00:00–09:00'},{name:'London',tz:'Europe/London',hours:'08:00–17:00'},{name:'New York',tz:'America/New_York',hours:'13:00–22:00'}];
-const demoNews=[{time:'14:30',impact:'HIGH',title:'USD — Major economic release',meta:'Demo calendar event'},{time:'16:00',impact:'MEDIUM',title:'USD — Economic data',meta:'Demo calendar event'},{time:'18:30',impact:'LOW',title:'EUR — Scheduled release',meta:'Demo calendar event'}];
-const demoRegime={score:82,name:'BULLISH / STRONG',text:'Demo state — live ADX, ATR, EMA and price data required.',trend:'BUY',adx:'32.6',atr:'1.24 (NORMAL)',volatility:'LOW',ema:'BULLISH (20 > 50 > 200)'};
-function nowIn(tz){return new Date(new Date().toLocaleString('en-US',{timeZone:tz}))}
-function isOpen(s){const d=nowIn(s.tz),mins=d.getHours()*60+d.getMinutes();const [a,b]=s.hours.split('–').map(x=>{const [h,m]=x.split(':').map(Number);return h*60+m});return a<b?mins>=a&&mins<b:mins>=a||mins<b}
-function updateClock(){const d=new Date();document.getElementById('clock').textContent=d.toLocaleTimeString('en-GB',{timeZone:'Asia/Colombo'});document.getElementById('date').textContent=d.toLocaleDateString('en-GB',{timeZone:'Asia/Colombo',weekday:'long',day:'2-digit',month:'long',year:'numeric'});const open=sessions.filter(isOpen),overlap=open.length>1;document.getElementById('session').textContent=overlap?'SESSION OVERLAP':(open[0]?.name.toUpperCase()||'MARKET CLOSED');document.getElementById('sessionDetail').textContent=open.length?open.map(x=>x.name).join(' + '):'No major session currently open';renderSessions()}
-function renderSessions(){document.getElementById('sessionGrid').innerHTML=sessions.map(s=>`<div class="session ${isOpen(s)?'active':''}"><div class="session-name">${s.name}</div><div class="session-time">${s.hours}</div><div class="session-state ${isOpen(s)?'ok':''}">${isOpen(s)?'● OPEN':'○ CLOSED'}</div></div>`).join('')}
-function renderNews(){document.getElementById('newsList').innerHTML=demoNews.map(n=>`<div class="news"><div class="impact ${n.impact==='HIGH'?'high':n.impact==='MEDIUM'?'medium':'low'}">${n.impact}</div><div><div class="news-title">${n.title}</div><div class="news-meta">${n.meta}</div></div><b>${n.time}</b></div>`).join('');const high=demoNews.some(n=>n.impact==='HIGH');document.getElementById('newsRisk').textContent=high?'HIGH IMPACT':'LOW RISK';document.getElementById('newsRisk').className='badge '+(high?'warn':'ok')}
-function renderDecision(){for(const [id,val] of Object.entries({regimeScore:demoRegime.score,regimeName:demoRegime.name,regimeText:demoRegime.text,trend:demoRegime.trend,adx:demoRegime.adx,atr:demoRegime.atr,volatility:demoRegime.volatility,ema:demoRegime.ema}))document.getElementById(id).textContent=val;document.getElementById('regimeBadge').textContent='DEMO';document.getElementById('overallScore').textContent=demoRegime.score;document.getElementById('scoreTrend').textContent='85';document.getElementById('scoreMomentum').textContent='88';document.getElementById('scoreNews').textContent='55';const high=demoNews.some(n=>n.impact==='HIGH'),sessionOpen=sessions.some(isOpen);let state='warn',decision='CAUTION',reason='Conditions are mixed. Wait for better confirmation.';if(!high&&sessionOpen&&demoRegime.score>=75){state='good';decision='GOOD TO TRADE';reason='All conditions are favorable. Look for high-quality setups.'}else if(high){state='bad';decision='AVOID TRADE';reason='High-impact news risk detected. Avoid fresh entries around major releases.'}document.body.className='state-'+state;document.getElementById('marketStatus').textContent=decision;document.getElementById('marketStatusDetail').textContent=reason;document.getElementById('decision').textContent=decision;document.getElementById('decision').className='decision '+state;document.getElementById('dSession').textContent=sessionOpen?'OPEN':'CLOSED';document.getElementById('dNews').textContent=high?'HIGH RISK':'LOW';document.getElementById('dRegime').textContent=demoRegime.score+'/100';document.getElementById('entryQuality').textContent=demoRegime.score>=75?'GOOD':'WEAK';document.getElementById('decisionReason').textContent=reason}
-let deferredPrompt;window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e;document.getElementById('installBtn').hidden=false});document.getElementById('installBtn').addEventListener('click',async()=>{if(!deferredPrompt)return;deferredPrompt.prompt();await deferredPrompt.userChoice;deferredPrompt=null;document.getElementById('installBtn').hidden=true});window.addEventListener('appinstalled',()=>document.getElementById('installBtn').hidden=true);if('serviceWorker'in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(console.error));updateClock();renderNews();renderDecision();setInterval(updateClock,1000);setInterval(renderDecision,30000);
+const sessions = [
+  { name: "Sydney", tz: "Australia/Sydney", hours: "22:00–07:00" },
+  { name: "Tokyo", tz: "Asia/Tokyo", hours: "00:00–09:00" },
+  { name: "London", tz: "Europe/London", hours: "08:00–17:00" },
+  { name: "New York", tz: "America/New_York", hours: "13:00–22:00" }
+];
+
+// Demo data for the UI.
+// Live news + live market/indicator API can be connected later.
+const demoNews = [
+  { time: "14:30", impact: "HIGH", title: "USD — Major economic release", meta: "Demo calendar event" },
+  { time: "16:00", impact: "MEDIUM", title: "USD — Economic data", meta: "Demo calendar event" },
+  { time: "18:30", impact: "LOW", title: "EUR — Scheduled release", meta: "Demo calendar event" }
+];
+
+const demoRegime = {
+  score: 82,
+  name: "BULLISH / STRONG",
+  text: "Demo state — live ADX, ATR, EMA and price data required.",
+  trend: "BUY",
+  adx: "32.6",
+  atr: "1.24 (NORMAL)",
+  volatility: "LOW",
+  ema: "BULLISH (20 > 50 > 200)"
+};
+
+function $(id) {
+  return document.getElementById(id);
+}
+
+function nowIn(timeZone) {
+  return new Date(new Date().toLocaleString("en-US", { timeZone }));
+}
+
+function isOpen(session) {
+  const d = nowIn(session.tz);
+  const minutes = d.getHours() * 60 + d.getMinutes();
+
+  const [start, end] = session.hours.split("–").map(value => {
+    const [h, m] = value.split(":").map(Number);
+    return h * 60 + m;
+  });
+
+  return start < end
+    ? minutes >= start && minutes < end
+    : minutes >= start || minutes < end;
+}
+
+function updateClock() {
+  const clock = $("clock");
+  const date = $("date");
+  const session = $("session");
+  const sessionDetail = $("sessionDetail");
+
+  if (clock) {
+    clock.textContent = new Date().toLocaleTimeString("en-GB", {
+      timeZone: "Asia/Colombo"
+    });
+  }
+
+  if (date) {
+    date.textContent = new Date().toLocaleDateString("en-GB", {
+      timeZone: "Asia/Colombo",
+      weekday: "long",
+      day: "2-digit",
+      month: "long",
+      year: "numeric"
+    });
+  }
+
+  const openSessions = sessions.filter(isOpen);
+  const sessionName = openSessions.length > 1
+    ? "SESSION OVERLAP"
+    : openSessions.length === 1
+      ? openSessions[0].name.toUpperCase()
+      : "MARKET CLOSED";
+
+  if (session) session.textContent = sessionName;
+
+  if (sessionDetail) {
+    sessionDetail.textContent = openSessions.length
+      ? openSessions.map(s => s.name).join(" + ")
+      : "No major session currently open";
+  }
+
+  renderSessions();
+}
+
+function renderSessions() {
+  const grid = $("sessionGrid");
+  if (!grid) return;
+
+  grid.innerHTML = sessions.map(session => {
+    const open = isOpen(session);
+
+    return `
+      <div class="session ${open ? "active" : ""}">
+        <div class="session-name">${session.name}</div>
+        <div class="session-time">${session.hours}</div>
+        <div class="session-state ${open ? "ok" : ""}">
+          ${open ? "● OPEN" : "○ CLOSED"}
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+function renderNews() {
+  const list = $("newsList");
+  if (!list) return;
+
+  list.innerHTML = demoNews.map(news => `
+    <div class="news">
+      <div class="impact ${
+        news.impact === "HIGH"
+          ? "high"
+          : news.impact === "MEDIUM"
+            ? "medium"
+            : "low"
+      }">${news.impact}</div>
+
+      <div>
+        <div class="news-title">${news.title}</div>
+        <div class="news-meta">${news.meta}</div>
+      </div>
+
+      <b>${news.time}</b>
+    </div>
+  `).join("");
+
+  const highImpact = demoNews.some(news => news.impact === "HIGH");
+  const risk = $("newsRisk");
+
+  if (risk) {
+    risk.textContent = highImpact ? "HIGH IMPACT" : "LOW RISK";
+    risk.className = `badge ${highImpact ? "warn" : "ok"}`;
+  }
+}
+
+function renderDecision() {
+  const ids = {
+    regimeScore: demoRegime.score,
+    regimeName: demoRegime.name,
+    regimeText: demoRegime.text,
+    trend: demoRegime.trend,
+    adx: demoRegime.adx,
+    atr: demoRegime.atr,
+    volatility: demoRegime.volatility,
+    ema: demoRegime.ema
+  };
+
+  Object.entries(ids).forEach(([id, value]) => {
+    const element = $(id);
+    if (element) element.textContent = value;
+  });
+
+  const overallScore = $("overallScore");
+  if (overallScore) overallScore.textContent = demoRegime.score;
+
+  const scoreTrend = $("scoreTrend");
+  const scoreMomentum = $("scoreMomentum");
+  const scoreNews = $("scoreNews");
+
+  if (scoreTrend) scoreTrend.textContent = "85";
+  if (scoreMomentum) scoreMomentum.textContent = "88";
+  if (scoreNews) scoreNews.textContent = "55";
+
+  const highImpact = demoNews.some(news => news.impact === "HIGH");
+  const sessionOpen = sessions.some(isOpen);
+
+  let state = "warn";
+  let decision = "CAUTION";
+  let reason = "Conditions are mixed. Wait for better confirmation.";
+
+  if (highImpact) {
+    state = "bad";
+    decision = "AVOID TRADE";
+    reason = "High-impact news risk detected. Avoid fresh entries around major releases.";
+  } else if (sessionOpen && demoRegime.score >= 75) {
+    state = "good";
+    decision = "GOOD TO TRADE";
+    reason = "All conditions are favorable. Look for high-quality setups.";
+  }
+
+  document.body.className = `state-${state}`;
+
+  const status = $("marketStatus");
+  const statusDetail = $("marketStatusDetail");
+  const decisionElement = $("decision");
+  const dSession = $("dSession");
+  const dNews = $("dNews");
+  const dRegime = $("dRegime");
+  const entryQuality = $("entryQuality");
+  const reasonElement = $("decisionReason");
+
+  if (status) status.textContent = decision;
+  if (statusDetail) statusDetail.textContent = reason;
+
+  if (decisionElement) {
+    decisionElement.textContent = decision;
+    decisionElement.className = `decision ${state}`;
+  }
+
+  if (dSession) dSession.textContent = sessionOpen ? "OPEN" : "CLOSED";
+  if (dNews) dNews.textContent = highImpact ? "HIGH RISK" : "LOW";
+  if (dRegime) dRegime.textContent = `${demoRegime.score}/100`;
+  if (entryQuality) entryQuality.textContent = demoRegime.score >= 75 ? "GOOD" : "WEAK";
+  if (reasonElement) reasonElement.textContent = reason;
+}
+
+function setupInstallButton() {
+  // IMPORTANT:
+  // Do not stop the entire dashboard if the install button is absent.
+  const installButton = $("installBtn");
+  if (!installButton) return;
+
+  let deferredPrompt = null;
+
+  window.addEventListener("beforeinstallprompt", event => {
+    event.preventDefault();
+    deferredPrompt = event;
+    installButton.hidden = false;
+  });
+
+  installButton.addEventListener("click", async () => {
+    if (!deferredPrompt) return;
+
+    deferredPrompt.prompt();
+
+    try {
+      await deferredPrompt.userChoice;
+    } catch (error) {
+      console.log("PWA install prompt closed.", error);
+    }
+
+    deferredPrompt = null;
+    installButton.hidden = true;
+  });
+
+  window.addEventListener("appinstalled", () => {
+    installButton.hidden = true;
+  });
+}
+
+function setupServiceWorker() {
+  if (!("serviceWorker" in navigator)) return;
+
+  window.addEventListener("load", () => {
+    navigator.serviceWorker
+      .register("./sw.js")
+      .catch(error => console.error("Service worker registration failed:", error));
+  });
+}
+
+function initDashboard() {
+  updateClock();
+  renderNews();
+  renderDecision();
+  setupInstallButton();
+  setupServiceWorker();
+
+  setInterval(updateClock, 1000);
+  setInterval(renderDecision, 30000);
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", initDashboard);
+} else {
+  initDashboard();
+}

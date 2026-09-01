@@ -453,8 +453,6 @@ function renderMarketData() {
       : "—"
   );
 
-  const b = marketData.scoreBreakdown;
-
   setText(
     "scoreTrend",
     Number.isFinite(b.totalRaw)

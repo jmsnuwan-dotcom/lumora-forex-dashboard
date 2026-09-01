@@ -459,38 +459,29 @@ function setText(id, value) {
 
 function renderDecision() {
 
-  const openSessions =
-    getOpenSessions();
-
-  const sessionOpen =
-    openSessions.length > 0;
+  const openSessions = getOpenSessions();
+  const sessionOpen = openSessions.length > 0;
 
   /*
-     SAFE DECISION SYSTEM
-
-     🟢 GOOD TO TRADE
-     🔴 AVOID TRADE
-     🟡 CONDITIONAL
-
-     If live data is not available,
-     keep the dashboard in the warning
-     state and never fake a trade signal.
+     SAFETY RULE:
+     Never create a trading decision when live market
+     data is unavailable.
   */
 
   let state = "neutral";
-
-  let decision =
-    "DATA UNAVAILABLE";
-
+  let decision = "DATA UNAVAILABLE";
   let reason =
     "Live market intelligence data is not connected.";
+
+  /* =======================================================
+     DATA UNAVAILABLE
+     ======================================================= */
 
   if (!marketData.available) {
 
     state = "neutral";
 
-    decision =
-      "DATA UNAVAILABLE";
+    decision = "DATA UNAVAILABLE";
 
     reason =
       "Connect the live market and economic-calendar data before making a trading decision.";
@@ -498,7 +489,7 @@ function renderDecision() {
   } else {
 
     const highImpact =
-      marketData.newsRisk;
+      Boolean(marketData.newsRisk);
 
     const score =
       Number(marketData.score);
@@ -506,36 +497,27 @@ function renderDecision() {
     const entryQuality =
       String(
         marketData.entryQuality || ""
-      ).toUpperCase();
+      ).trim().toUpperCase();
 
-    /*
+    /* =====================================================
        🔴 AVOID TRADE
-
-       Highest priority condition.
-       High-impact news overrides
-       normal market conditions.
-    */
+       Highest priority
+       ===================================================== */
 
     if (highImpact) {
 
       state = "bad";
 
-      decision =
-        "AVOID TRADE";
+      decision = "AVOID TRADE";
 
       reason =
         "High-impact news risk detected. Avoid fresh entries around major releases.";
 
     }
 
-    /*
+    /* =====================================================
        🟢 GOOD TO TRADE
-
-       Session is open
-       + valid market score
-       + score >= 75
-       + entry quality is not POOR
-    */
+       ===================================================== */
 
     else if (
       sessionOpen &&
@@ -546,44 +528,38 @@ function renderDecision() {
 
       state = "good";
 
-      decision =
-        "GOOD TO TRADE";
+      decision = "GOOD TO TRADE";
 
       reason =
         "Market conditions meet the current dashboard criteria.";
 
     }
 
-    /*
+    /* =====================================================
        🟡 CONDITIONAL
-
-       Data exists but conditions
-       are not strong enough.
-    */
+       ===================================================== */
 
     else {
 
       state = "warn";
 
-      decision =
-        "CONDITIONAL";
+      decision = "CONDITIONAL";
 
       reason =
         "Conditions are not fully aligned. Wait for stronger confirmation.";
     }
   }
 
-  /*
-     IMPORTANT:
-     style.css can use these classes:
-
-     body.state-good
-     body.state-bad
-     body.state-warn
-  */
+  /* =======================================================
+     APPLY BODY STATE
+     ======================================================= */
 
   document.body.className =
     `state-${state}`;
+
+  /* =======================================================
+     MARKET STATUS
+     ======================================================= */
 
   setText(
     "marketStatus",
@@ -594,6 +570,10 @@ function renderDecision() {
     "marketStatusDetail",
     reason
   );
+
+  /* =======================================================
+     DECISION BADGE
+     ======================================================= */
 
   const decisionElement =
     $("decision");
@@ -606,6 +586,10 @@ function renderDecision() {
     decisionElement.className =
       `decision ${state}`;
   }
+
+  /* =======================================================
+     DECISION DETAILS
+     ======================================================= */
 
   setText(
     "dSession",
@@ -646,7 +630,6 @@ function renderDecision() {
     reason
   );
 }
-
 /* =========================================================
    API DATA SUPPORT
    =========================================================

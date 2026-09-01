@@ -477,7 +477,7 @@ function renderDecision() {
      state and never fake a trade signal.
   */
 
-  let state = "warn";
+  let state = "neutral";
 
   let decision =
     "DATA UNAVAILABLE";

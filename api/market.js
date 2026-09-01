@@ -752,3 +752,4 @@ function round(value) {
     ? Number(value.toFixed(2))
     : null;
 }
+

@@ -1,26 +1,7 @@
-# Lumora Forex Market Dashboard
+# Lumora Forex Market Dashboard PWA
 
-Static Vercel-ready dashboard for Forex sessions, economic-news display, market regime and trade-condition UI.
+Mobile-first PWA ready for GitHub + Vercel.
 
-## Important
-The included news and market-regime values are DEMO placeholders. They are intentionally not presented as live trading data.
+Includes responsive desktop/mobile UI, Forex session clock, conditional green/red/yellow backgrounds, economic-calendar UI, XAUUSD market-regime UI, trade filter, PWA manifest, service worker and Install App button.
 
-## Deploy
-1. Upload this folder to GitHub.
-2. In Vercel, import the GitHub repository.
-3. Framework preset: Other.
-4. Build command: leave empty.
-5. Output directory: leave empty / root.
-6. Deploy.
-
-## Next integration
-Connect a trusted economic-calendar API and your Lumora backend/API for:
-- live high/medium/low impact news
-- news countdowns
-- XAUUSD live price
-- ADX / ATR / EMA
-- market regime score
-- entry quality score
-- final trade status
-
-Do not expose broker API keys or private credentials in frontend JavaScript.
+Current news and regime values are DEMO placeholders. Live API integration is required before real trading use.

@@ -24,9 +24,14 @@ const CALENDAR_URLS = [
 const CALENDAR_CACHE_MS = 15 * 60 * 1000;
 const NEWS_LOOKAHEAD_MINUTES = 60;
 const NEWS_RECENT_MINUTES = 30;
-const MAJOR_CURRENCIES = new Set([
-  "USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "NZD", "CNY"
-]);
+
+const GOLD_NEWS_KEYWORDS = [
+  "gold", "xau", "precious metal", "precious metals",
+  "fed", "federal reserve", "interest rate", "rate decision",
+  "treasury", "yield", "bond yield", "dollar", "usd",
+  "middle east", "geopolitical", "war", "conflict", "tariff",
+  "sanction", "safe haven"
+];
 
 let calendarCache = {
   fetchedAt: 0,
@@ -346,9 +351,7 @@ export default async function handler(req, res) {
     const now = new Date();
 
     const relevantNews = calendar.events
-      .filter(event =>
-        MAJOR_CURRENCIES.has(event.currency)
-      )
+      .filter(isGoldRelevantNews)
       .map(event => ({
         ...event,
         minutesFromNow: Math.round(
@@ -793,154 +796,68 @@ function atr(candles, period) {
 
 function adx(candles, period) {
 
-  if (
-    candles.length <
-    period * 2 + 2
-  ) {
-    return new Array(
-      candles.length
-    ).fill(null);
+  if (candles.length < period * 2 + 2) {
+    return new Array(candles.length).fill(null);
   }
 
   const trueRanges = [];
   const plusDM = [];
   const minusDM = [];
 
-  for (
-    let i = 0;
-    i < candles.length;
-    i++
-  ) {
-
+  for (let i = 0; i < candles.length; i++) {
     if (i === 0) {
-
-      trueRanges.push(
-        candles[i].high -
-        candles[i].low
-      );
-
+      trueRanges.push(candles[i].high - candles[i].low);
       plusDM.push(0);
       minusDM.push(0);
-
       continue;
     }
 
-    const current =
-      candles[i];
+    const current = candles[i];
+    const previous = candles[i - 1];
+    const upMove = current.high - previous.high;
+    const downMove = previous.low - current.low;
 
-    const previous =
-      candles[i - 1];
+    plusDM.push(upMove > downMove && upMove > 0 ? upMove : 0);
+    minusDM.push(downMove > upMove && downMove > 0 ? downMove : 0);
 
-    const upMove =
-      current.high -
-      previous.high;
-
-    const downMove =
-      previous.low -
-      current.low;
-
-    plusDM.push(
-      upMove > downMove &&
-      upMove > 0
-        ? upMove
-        : 0
-    );
-
-    minusDM.push(
-      downMove > upMove &&
-      downMove > 0
-        ? downMove
-        : 0
-    );
-
-    trueRanges.push(
-      Math.max(
-
-        current.high -
-        current.low,
-
-        Math.abs(
-          current.high -
-          previous.close
-        ),
-
-        Math.abs(
-          current.low -
-          previous.close
-        )
-      )
-    );
+    trueRanges.push(Math.max(
+      current.high - current.low,
+      Math.abs(current.high - previous.close),
+      Math.abs(current.low - previous.close)
+    ));
   }
 
-  const atrValues =
-    wilder(
-      trueRanges,
-      period
-    );
+  const atrValues = wilder(trueRanges, period);
+  const plusValues = wilder(plusDM, period);
+  const minusValues = wilder(minusDM, period);
+  const dx = new Array(candles.length).fill(null);
 
-  const plusValues =
-    wilder(
-      plusDM,
-      period
-    );
+  for (let i = 0; i < candles.length; i++) {
+    if (!Number.isFinite(atrValues[i]) || atrValues[i] <= 0) continue;
 
-  const minusValues =
-    wilder(
-      minusDM,
-      period
-    );
-
-  const dx =
-    new Array(
-      candles.length
-    ).fill(null);
-
-  for (
-    let i = 0;
-    i < candles.length;
-    i++
-  ) {
-
-    if (
-      !atrValues[i] ||
-      atrValues[i] === 0
-    ) {
-      continue;
-    }
-
-    const plusDI =
-      100 *
-      plusValues[i] /
-      atrValues[i];
-
-    const minusDI =
-      100 *
-      minusValues[i] /
-      atrValues[i];
-
-    const total =
-      plusDI +
-      minusDI;
+    const plusDI = 100 * plusValues[i] / atrValues[i];
+    const minusDI = 100 * minusValues[i] / atrValues[i];
+    const total = plusDI + minusDI;
 
     if (total > 0) {
-
-      dx[i] =
-        100 *
-        Math.abs(
-          plusDI -
-          minusDI
-        ) /
-        total;
+      dx[i] = 100 * Math.abs(plusDI - minusDI) / total;
     }
   }
 
-  return wilder(
-    dx.map(
-      value =>
-        value ?? 0
-    ),
-    period
-  );
+  const output = new Array(candles.length).fill(null);
+  const first = dx.slice(0, period).filter(Number.isFinite);
+  if (first.length < period) return output;
+
+  let average = first.reduce((sum, value) => sum + value, 0) / period;
+  output[period - 1] = Math.max(0, Math.min(100, average));
+
+  for (let i = period; i < dx.length; i++) {
+    const current = Number.isFinite(dx[i]) ? dx[i] : 0;
+    average = ((average * (period - 1)) + current) / period;
+    output[i] = Math.max(0, Math.min(100, average));
+  }
+
+  return output;
 }
 
 
@@ -1182,6 +1099,17 @@ async function getEconomicCalendar() {
   };
 }
 
+function isGoldRelevantNews(event) {
+  if (!event) return false;
+  const currency = String(event.currency || "").toUpperCase();
+  const title = String(event.title || "").toLowerCase();
+
+  // USD macro/Fed releases are the primary scheduled macro drivers for XAU/USD.
+  if (currency === "USD") return true;
+
+  return GOLD_NEWS_KEYWORDS.some(keyword => title.includes(keyword));
+}
+
 function normalizeFinnhubEvent(item) {
 
   if (!item || typeof item !== "object") {
@@ -1394,89 +1322,31 @@ function formatNewsForClient(event) {
 
 function getCurrentSessions() {
 
-  const now =
-    new Date();
+  // Fixed UTC windows prevent local timezone/DST conversion mistakes.
+  const now = new Date();
+  const utcMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
 
   const sessions = [
-
-    [
-      "Sydney",
-      "Australia/Sydney",
-      "22:00–07:00"
-    ],
-
-    [
-      "Tokyo",
-      "Asia/Tokyo",
-      "00:00–09:00"
-    ],
-
-    [
-      "London",
-      "Europe/London",
-      "08:00–17:00"
-    ],
-
-    [
-      "New York",
-      "America/New_York",
-      "13:00–22:00"
-    ]
-
+    ["Sydney", "22:00–07:00"],
+    ["Tokyo", "00:00–09:00"],
+    ["London", "08:00–17:00"],
+    ["New York", "13:00–22:00"]
   ];
 
   return sessions
-    .filter(
-      ([, timeZone, hours]) => {
-
-        const date =
-          new Date(
-            now.toLocaleString(
-              "en-US",
-              {
-                timeZone
-              }
-            )
-          );
-
-        const minutes =
-          date.getHours() *
-          60 +
-          date.getMinutes();
-
-        const [
-          start,
-          end
-        ] =
-          hours
-            .split("–")
-            .map(value => {
-
-              const [
-                hour,
-                minute
-              ] =
-                value
-                  .split(":")
-                  .map(Number);
-
-              return (
-                hour * 60 +
-                minute
-              );
-            });
-
-        return start < end
-          ? minutes >= start &&
-            minutes < end
-          : minutes >= start ||
-            minutes < end;
-      }
-    )
-    .map(
-      ([name]) =>
-        name
-    );
+    .filter(([, hours]) => {
+      const [startText, endText] = hours.split("–");
+      const toMinutes = value => {
+        const [hour, minute] = value.split(":").map(Number);
+        return hour * 60 + minute;
+      };
+      const start = toMinutes(startText);
+      const end = toMinutes(endText);
+      return start < end
+        ? utcMinutes >= start && utcMinutes < end
+        : utcMinutes >= start || utcMinutes < end;
+    })
+    .map(([name]) => name);
 }
 
 
